@@ -185,6 +185,8 @@ def handle_message(event):
 
     if user_id in registration_states:
         reply_text = handle_registration(user_id, user_message)
+    elif not _is_registered(user_id):
+        reply_text = start_registration(user_id)
     else:
         reply_text = get_claude_reply(user_id, user_message)
 
