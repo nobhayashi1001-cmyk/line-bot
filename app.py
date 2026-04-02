@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from flask import Flask, request, abort
 
 logging.basicConfig(level=logging.ERROR)
@@ -294,21 +295,42 @@ def handle_follow(event):
 def handle_message(event):
     user_id = event.source.user_id
     user_message = event.message.text
-    reply_text = "申し訳ありません。\nただいま少し調子が悪いようです。\nしばらくしてからもう一度お試しください。"
 
+    # 登録フロー中・未登録は同期処理（Supabase 参照のみで高速）
     try:
         if user_id in registration_states:
             reply_text = handle_registration(user_id, user_message)
-        elif not _is_registered(user_id):
-            reply_text = start_registration(user_id)
-        else:
-            _save_message(user_id, "user", user_message)
-            reply_text = get_claude_reply(user_id, user_message)
-            _save_message(user_id, "assistant", reply_text)
-    except Exception as e:
-        logging.exception("handle_message error: %s", e)
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+            return
 
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+        if not _is_registered(user_id):
+            reply_text = start_registration(user_id)
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+            return
+    except Exception as e:
+        logging.exception("registration flow error: %s", e)
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text="申し訳ありません。\nしばらくしてからもう一度お試しください。"),
+        )
+        return
+
+    # 登録済みユーザーへの Claude 返答：Web 検索で 30 秒超えることがあるため
+    # バックグラウンドスレッドで処理し、reply_token 失効後も届く push_message で送信
+    def _process(uid: str, msg: str) -> None:
+        reply_text = "申し訳ありません。\nただいま少し調子が悪いようです。\nしばらくしてからもう一度お試しください。"
+        try:
+            _save_message(uid, "user", msg)
+            reply_text = get_claude_reply(uid, msg)
+            _save_message(uid, "assistant", reply_text)
+        except Exception as e:
+            logging.exception("Claude reply error: %s", e)
+        try:
+            line_bot_api.push_message(uid, TextSendMessage(text=reply_text))
+        except Exception as e:
+            logging.exception("push_message error: %s", e)
+
+    threading.Thread(target=_process, args=(user_id, user_message), daemon=True).start()
 
 
 # ── ヘルスチェック ────────────────────────────────────
