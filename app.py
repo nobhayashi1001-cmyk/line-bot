@@ -213,29 +213,39 @@ def get_claude_reply(user_id: str, user_message: str) -> str:
         history = history[-MAX_HISTORY:]
         conversation_histories[user_id] = history
 
-    # Web search はサーバーサイド実行のため pause_turn が返ることがある。
-    # その場合はアシスタント応答を messages に追加して再リクエストする。
     messages = list(history)
     response = None
 
-    for _ in range(MAX_WEB_SEARCH_TURNS + 1):
+    try:
+        # Web search ツール付きで試みる（pause_turn は継続ループで処理）
+        for _ in range(MAX_WEB_SEARCH_TURNS + 1):
+            response = anthropic_client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=1024,
+                system=SYSTEM_PROMPT,
+                tools=WEB_SEARCH_TOOLS,
+                messages=messages,
+            )
+
+            if response.stop_reason == "end_turn":
+                break
+
+            if response.stop_reason == "pause_turn":
+                # サーバー側ループが上限に達した。応答を追加して継続
+                messages.append({"role": "assistant", "content": response.content})
+                continue
+
+            break  # max_tokens など予期しない stop_reason
+
+    except Exception as e:
+        # ツールが拒否された場合（権限不足・非対応モデルなど）はツールなしで再試行
+        logging.error("web search failed (%s: %s), retrying without tools", type(e).__name__, e)
         response = anthropic_client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=1024,
             system=SYSTEM_PROMPT,
-            tools=WEB_SEARCH_TOOLS,
-            messages=messages,
+            messages=list(history),
         )
-
-        if response.stop_reason == "end_turn":
-            break
-
-        if response.stop_reason == "pause_turn":
-            # サーバー側ループが上限に達した。応答を追加して継続
-            messages.append({"role": "assistant", "content": response.content})
-            continue
-
-        break  # max_tokens など予期しない stop_reason
 
     reply_text = next(
         (block.text for block in response.content if block.type == "text"),
