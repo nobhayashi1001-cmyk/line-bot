@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 import os
 from flask import Flask, request, abort
+
+logging.basicConfig(level=logging.ERROR)
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import (
@@ -217,7 +220,7 @@ def get_claude_reply(user_id: str, user_message: str) -> str:
 
     for _ in range(MAX_WEB_SEARCH_TURNS + 1):
         response = anthropic_client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model="claude-sonnet-4-6",
             max_tokens=1024,
             system=SYSTEM_PROMPT,
             tools=WEB_SEARCH_TOOLS,
@@ -287,8 +290,8 @@ def handle_message(event):
             _save_message(user_id, "user", user_message)
             reply_text = get_claude_reply(user_id, user_message)
             _save_message(user_id, "assistant", reply_text)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.exception("handle_message error: %s", e)
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
