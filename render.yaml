@@ -6,7 +6,7 @@ services:
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 60
     envVars:
       - key: PYTHON_VERSION
-        value: "3.14.0"
+        value: "3.11.0"
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: LINE_CHANNEL_ACCESS_TOKEN
