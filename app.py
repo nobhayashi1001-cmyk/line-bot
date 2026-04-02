@@ -114,6 +114,12 @@ def _save_user(user_id: str, state: dict) -> None:
     ).execute()
 
 
+def _save_message(user_id: str, role: str, content: str) -> None:
+    get_supabase().table("messages").insert(
+        {"line_user_id": user_id, "role": role, "content": content}
+    ).execute()
+
+
 def _is_registered(user_id: str) -> bool:
     result = (
         get_supabase().table("users")
@@ -188,7 +194,9 @@ def handle_message(event):
     elif not _is_registered(user_id):
         reply_text = start_registration(user_id)
     else:
+        _save_message(user_id, "user", user_message)
         reply_text = get_claude_reply(user_id, user_message)
+        _save_message(user_id, "assistant", reply_text)
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
