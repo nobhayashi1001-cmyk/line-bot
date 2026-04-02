@@ -24,7 +24,14 @@ SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+_supabase = None
+
+def get_supabase():
+    global _supabase
+    if _supabase is None:
+        _supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    return _supabase
 
 # 通常会話の履歴: {user_id: [{"role": ..., "content": ...}]}
 conversation_histories: dict[str, list[dict]] = {}
@@ -96,7 +103,7 @@ def handle_registration(user_id: str, message: str) -> str:
 
 
 def _save_user(user_id: str, state: dict) -> None:
-    supabase.table("users").upsert(
+    get_supabase().table("users").upsert(
         {
             "line_user_id": user_id,
             "name": state["name"],
@@ -109,7 +116,7 @@ def _save_user(user_id: str, state: dict) -> None:
 
 def _is_registered(user_id: str) -> bool:
     result = (
-        supabase.table("users")
+        get_supabase().table("users")
         .select("line_user_id")
         .eq("line_user_id", user_id)
         .limit(1)
