@@ -172,9 +172,12 @@ def _save_user(user_id: str, state: dict) -> None:
 
 
 def _save_message(user_id: str, role: str, content: str) -> None:
-    get_supabase().table("messages").insert(
-        {"line_user_id": user_id, "role": role, "content": content}
-    ).execute()
+    try:
+        get_supabase().table("messages").insert(
+            {"line_user_id": user_id, "role": role, "content": content}
+        ).execute()
+    except Exception:
+        pass  # ログ保存の失敗は返答処理に影響させない
 
 
 def _is_registered(user_id: str) -> bool:
@@ -245,15 +248,19 @@ def handle_follow(event):
 def handle_message(event):
     user_id = event.source.user_id
     user_message = event.message.text
+    reply_text = "申し訳ありません。\nただいま少し調子が悪いようです。\nしばらくしてからもう一度お試しください。"
 
-    if user_id in registration_states:
-        reply_text = handle_registration(user_id, user_message)
-    elif not _is_registered(user_id):
-        reply_text = start_registration(user_id)
-    else:
-        _save_message(user_id, "user", user_message)
-        reply_text = get_claude_reply(user_id, user_message)
-        _save_message(user_id, "assistant", reply_text)
+    try:
+        if user_id in registration_states:
+            reply_text = handle_registration(user_id, user_message)
+        elif not _is_registered(user_id):
+            reply_text = start_registration(user_id)
+        else:
+            _save_message(user_id, "user", user_message)
+            reply_text = get_claude_reply(user_id, user_message)
+            _save_message(user_id, "assistant", reply_text)
+    except Exception:
+        pass
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
