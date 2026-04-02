@@ -1,5 +1,4 @@
 import os
-from typing import Dict, List
 from flask import Flask, request, abort
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
@@ -24,7 +23,7 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 # ユーザーごとの会話履歴（メモリ上に保持）
-conversation_histories: Dict[str, List[dict]] = {}
+conversation_histories: dict[str, list[dict]] = {}
 
 SYSTEM_PROMPT = """あなたは高齢者の方々に寄り添う、やさしいアシスタントです。
 
