@@ -13,3 +13,7 @@ services:
         sync: false
       - key: LINE_CHANNEL_SECRET
         sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
