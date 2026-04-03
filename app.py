@@ -393,6 +393,15 @@ def handle_message(event):
         except Exception as e:
             logging.exception("push_message error: %s", e)
 
+    # バックグラウンド処理開始前に「お待ちください」を即返信
+    try:
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text=f"{user_info['name']}さん、少しお待ちください。\n確認してみますね。"),
+        )
+    except Exception as e:
+        logging.error("wait message error: %s", e)
+
     threading.Thread(target=_process, args=(user_id, user_message, user_info), daemon=True).start()
 
 
