@@ -43,6 +43,9 @@ conversation_histories: dict[str, list[dict]] = {}
 # 登録フローの途中状態: {user_id: {"step": str, "name": str, "region": str}}
 registration_states: dict[str, dict] = {}
 
+# ユーザー情報キャッシュ: {user_id: {"name": str, "region": str} | None}
+user_cache: dict[str, dict | None] = {}
+
 SYSTEM_PROMPT = """あなたは「地元くらしの御用聞き」です。
 藤沢市に暮らす高齢者の生活を、LINEを通じてそっとサポートする、頼れる近所の案内人です。
 
@@ -187,6 +190,7 @@ def _save_user(user_id: str, state: dict) -> None:
         },
         on_conflict="line_user_id",
     ).execute()
+    user_cache.pop(user_id, None)  # 登録完了時にキャッシュを無効化
 
 
 def _save_message(user_id: str, role: str, content: str) -> None:
@@ -198,20 +202,25 @@ def _save_message(user_id: str, role: str, content: str) -> None:
         pass  # ログ保存の失敗は返答処理に影響させない
 
 
-def _is_registered(user_id: str) -> bool:
+def _get_user(user_id: str) -> dict | None:
+    """DBからユーザー情報を取得する。結果はキャッシュする。未登録の場合はNoneを返す。"""
+    if user_id in user_cache:
+        return user_cache[user_id]
     result = (
         get_supabase().table("users")
-        .select("line_user_id")
+        .select("name, region")
         .eq("line_user_id", user_id)
         .limit(1)
         .execute()
     )
-    return len(result.data) > 0
+    user = result.data[0] if result.data else None
+    user_cache[user_id] = user
+    return user
 
 
 # ── Claude 返答 ────────────────────────────────────────
 
-def get_claude_reply(user_id: str, user_message: str) -> str:
+def get_claude_reply(user_id: str, user_message: str, user_info: dict | None = None) -> str:
     if user_id not in conversation_histories:
         conversation_histories[user_id] = []
 
@@ -221,6 +230,15 @@ def get_claude_reply(user_id: str, user_message: str) -> str:
     if len(history) > MAX_HISTORY:
         history = history[-MAX_HISTORY:]
         conversation_histories[user_id] = history
+
+    # ユーザー情報をシステムプロンプトに動的に注入
+    system = SYSTEM_PROMPT
+    if user_info:
+        system += (
+            f"\n\n【このユーザーの情報】"
+            f"\n・お名前：{user_info['name']}（必ず「{user_info['name']}さん」と呼びかけてください）"
+            f"\n・お住まいの地域：{user_info['region']}"
+        )
 
     response = None
 
@@ -237,7 +255,7 @@ def get_claude_reply(user_id: str, user_message: str) -> str:
                 kwargs = dict(
                     model="claude-sonnet-4-6",
                     max_tokens=1024,
-                    system=SYSTEM_PROMPT,
+                    system=system,
                     messages=messages,
                 )
                 if tools:
@@ -289,8 +307,9 @@ def handle_follow(event):
     """友達追加時に登録フローを開始する。すでに登録済みなら歓迎メッセージのみ。"""
     user_id = event.source.user_id
 
-    if _is_registered(user_id):
-        reply = "またお会いできてうれしいです。何でもお気軽にどうぞ。"
+    user = _get_user(user_id)
+    if user:
+        reply = f"またお会いできてうれしいです、{user['name']}さん。\n何でもお気軽にどうぞ。"
     else:
         reply = start_registration(user_id)
 
@@ -309,7 +328,8 @@ def handle_message(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
             return
 
-        if not _is_registered(user_id):
+        user_info = _get_user(user_id)
+        if user_info is None:
             reply_text = start_registration(user_id)
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
             return
@@ -323,11 +343,11 @@ def handle_message(event):
 
     # 登録済みユーザーへの Claude 返答：Web 検索で 30 秒超えることがあるため
     # バックグラウンドスレッドで処理し、reply_token 失効後も届く push_message で送信
-    def _process(uid: str, msg: str) -> None:
+    def _process(uid: str, msg: str, uinfo: dict) -> None:
         reply_text = "申し訳ありません。\nただいま少し調子が悪いようです。\nしばらくしてからもう一度お試しください。"
         try:
             _save_message(uid, "user", msg)
-            reply_text = get_claude_reply(uid, msg)
+            reply_text = get_claude_reply(uid, msg, uinfo)
             _save_message(uid, "assistant", reply_text)
         except Exception as e:
             logging.exception("Claude reply error: %s", e)
@@ -336,7 +356,7 @@ def handle_message(event):
         except Exception as e:
             logging.exception("push_message error: %s", e)
 
-    threading.Thread(target=_process, args=(user_id, user_message), daemon=True).start()
+    threading.Thread(target=_process, args=(user_id, user_message, user_info), daemon=True).start()
 
 
 # ── ヘルスチェック ────────────────────────────────────
