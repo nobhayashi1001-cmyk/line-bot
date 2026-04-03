@@ -342,6 +342,20 @@ def _is_food_query(message: str) -> bool:
     return any(kw in message for kw in _FOOD_TRIGGER_KEYWORDS)
 
 
+# Web検索が必要なキーワード（リアルタイム情報が必要な場合のみ）
+_WEB_SEARCH_KEYWORDS = {
+    "天気", "気温", "予報", "雨", "台風", "雪", "晴れ", "曇り",
+    "今日", "明日", "今週", "最新", "最近", "ニュース", "情報",
+    "現在", "今の", "今は", "いま", "何時", "開いてる", "営業",
+    "イベント", "祭り", "工事", "渋滞", "運休", "遅延",
+}
+
+
+def _needs_web_search(message: str) -> bool:
+    """リアルタイム情報が必要な質問かどうかを判定する。"""
+    return any(kw in message for kw in _WEB_SEARCH_KEYWORDS)
+
+
 def _query_restaurants(message: str) -> list[dict]:
     """メッセージからジャンル・エリアを抽出してDBを検索し、生データリストを返す。"""
     genre = next((kw for kw in _GENRE_KEYWORDS if kw in message), None)
@@ -438,8 +452,9 @@ def get_claude_reply(user_id: str, user_message: str, user_info: dict | None = N
     #   1. 最新ツール (web_search_20260209 / web_fetch_20260209)
     #   2. 旧ツール   (web_search_20250305 / web_fetch_20250910)
     #   3. ツールなし（RAGデータとClaudeの知識のみで回答）
-    # V2ツール(10秒) → 失敗したら即ツールなし。V1は削除（時間がかかりすぎるため）
-    for tools in (WEB_SEARCH_TOOLS_V2, None):
+    # Web検索が必要な質問のみV2ツールを試みる。それ以外は最初からツールなし。
+    tool_candidates = (WEB_SEARCH_TOOLS_V2, None) if _needs_web_search(user_message) else (None,)
+    for tools in tool_candidates:
         try:
             messages = list(history)
             # すべてのAPI呼び出しに明示的タイムアウトを設定（スレッド蓄積を防ぐ）
