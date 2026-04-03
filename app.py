@@ -218,30 +218,55 @@ def _get_user(user_id: str) -> dict | None:
     return user
 
 
-def _search_restaurants(query: str) -> str:
-    """飲食店クエリからDBを検索し、Claude に渡す文字列を返す。"""
+# ジャンルキーワード → DB の genre 列と対応
+_GENRE_KEYWORDS = [
+    "ラーメン", "寿司", "カフェ", "喫茶", "イタリアン", "中華", "和食",
+    "焼肉", "居酒屋", "そば", "うどん", "バー", "パン", "レストラン",
+]
+
+# エリアキーワード → DB の area 列と対応
+_AREA_KEYWORDS = ["藤沢", "辻堂", "江ノ島", "片瀬", "湘南台", "大船"]
+
+# 飲食系と判定するトリガーキーワード
+_FOOD_TRIGGER_KEYWORDS = {
+    "ごはん", "飯", "食事", "食べ", "ランチ", "ディナー", "夕食", "昼食", "朝食",
+    "飲食", "お店", "おすすめ", "教えて",
+} | set(_GENRE_KEYWORDS) | set(_AREA_KEYWORDS)
+
+
+def _is_food_query(message: str) -> bool:
+    return any(kw in message for kw in _FOOD_TRIGGER_KEYWORDS)
+
+
+def _search_restaurants(message: str) -> str:
+    """メッセージからジャンル・エリアを抽出してDBを検索し、Claudeに渡す文字列を返す。"""
+    genre = next((kw for kw in _GENRE_KEYWORDS if kw in message), None)
+    area  = next((kw for kw in _AREA_KEYWORDS  if kw in message), None)
     try:
-        # ジャンル・エリアキーワードで絞り込む（ilike で部分一致）
-        result = (
+        q = (
             get_supabase().table("restaurants")
-            .select("name, genre, area, address, phone, rating, description")
-            .ilike("description", f"%{query}%")
-            .order("rating", desc=True)
-            .limit(5)
-            .execute()
+            .select("name, genre, area, address, phone, rating")
         )
+        if genre:
+            q = q.ilike("genre", f"%{genre}%")
+        if area:
+            q = q.ilike("area", f"%{area}%")
+        result = q.order("rating", desc=True).limit(5).execute()
+
+        # ジャンル・エリアで絞れなかった場合は評価順上位を返す
         if not result.data:
-            # ジャンル・エリアで絞れなければ評価順上位を返す
             result = (
                 get_supabase().table("restaurants")
-                .select("name, genre, area, address, phone, rating, description")
+                .select("name, genre, area, address, phone, rating")
                 .order("rating", desc=True)
                 .limit(5)
                 .execute()
             )
         if not result.data:
             return ""
-        lines = ["【近くのお店情報】"]
+
+        label = f"【藤沢の{genre or 'お店'}情報】" if not area else f"【{area}周辺の{genre or 'お店'}情報】"
+        lines = [label]
         for r in result.data:
             line = f"・{r['name']}（{r['genre']}／{r['area']}）"
             if r.get("rating"):
@@ -255,18 +280,6 @@ def _search_restaurants(query: str) -> str:
     except Exception as e:
         logging.error("restaurant search error: %s", e)
         return ""
-
-
-# 飲食・食事に関するキーワード
-_FOOD_KEYWORDS = {
-    "ごはん", "飯", "食事", "食べ", "ランチ", "ディナー", "夕食", "昼食", "朝食",
-    "レストラン", "カフェ", "喫茶", "ラーメン", "寿司", "そば", "うどん", "和食",
-    "中華", "イタリアン", "焼肉", "居酒屋", "バー", "お店", "おすすめ", "近く",
-}
-
-
-def _is_food_query(message: str) -> bool:
-    return any(kw in message for kw in _FOOD_KEYWORDS)
 
 
 def _load_history(user_id: str) -> list[dict]:
