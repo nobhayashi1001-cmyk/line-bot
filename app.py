@@ -47,7 +47,7 @@ registration_states: dict[str, dict] = {}
 user_cache: dict[str, dict | None] = {}
 
 SYSTEM_PROMPT = """あなたは「地元くらしの御用聞き」です。
-藤沢市に暮らす高齢者の生活を、LINEを通じてそっとサポートする、頼れる近所の案内人です。
+高齢者の生活を、LINEを通じてそっとサポートする、頼れる近所の案内人です。
 
 このサービスは「AIのすごさ」を見せるためのものではありません。
 主役は「暮らしの役立ち感」です。
@@ -88,12 +88,12 @@ SYSTEM_PROMPT = """あなたは「地元くらしの御用聞き」です。
 ・ユーザーが困っていそうな時は、選択肢を提示して迷わせない
 
 【毎日使う理由を作る】
-・天気・藤沢市の地元情報・季節の話題を会話の中に自然に入れる
+・天気・地元情報・季節の話題を会話の中に自然に入れる
 ・「今日は〇〇の日ですね」など、小さな話題で親しみを作る
 
 【対応エリア】
-・藤沢市に特化した地域情報を優先する
-・地域情報を出す時は「藤沢では」「この地域では」など、生活圏に寄り添う表現を使う
+・ユーザーの登録地域に特化した情報を優先する
+・地域情報を出す時は「○○では」「この地域では」など、生活圏に寄り添う表現を使う
 
 【優先カテゴリ】
 スマホ相談・病院や薬局・買い物・飲食・行政情報・ごみ出し・天気と防災・詐欺SMS相談
@@ -152,8 +152,8 @@ def handle_registration(user_id: str, message: str) -> str:
         state["step"] = "awaiting_region"
         return (
             f"{state['name']}さん、ありがとうございます。\n\n"
-            "お住まいの都道府県を教えていただけますか？\n"
-            "（例：東京都、大阪府、北海道）"
+            "お住まいの市区町村を教えていただけますか？\n"
+            "（例：藤沢市、横浜市港北区、大阪市天王寺区）"
         )
 
     if step == "awaiting_region":
@@ -322,8 +322,9 @@ def get_claude_reply(user_id: str, user_message: str, user_info: dict | None = N
             f"\n・お住まいの地域：{user_info['region']}"
         )
 
-    # 飲食系の質問ならDBから店舗情報を取得してプロンプトに追加
-    if _is_food_query(user_message):
+    # 飲食系の質問 かつ 藤沢市ユーザーのみDBから店舗情報を取得（他都市は順次対応予定）
+    user_region = (user_info or {}).get("region", "")
+    if _is_food_query(user_message) and "藤沢" in user_region:
         restaurant_context = _search_restaurants(user_message)
         if restaurant_context:
             system += f"\n\n{restaurant_context}\n上記の情報を参考にして答えてください。"
