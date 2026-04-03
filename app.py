@@ -366,10 +366,13 @@ def get_claude_reply(user_id: str, user_message: str, user_info: dict | None = N
             response = None
             continue  # 次のツールセットで再試行
 
-    reply_text = next(
-        (block.text for block in response.content if block.type == "text"),
-        "申し訳ありません。うまく答えられませんでした。",
-    )
+    if response is None:
+        reply_text = "申し訳ありません。\nただいま少し混み合っています。\nしばらくしてからもう一度お試しください。"
+    else:
+        reply_text = next(
+            (block.text for block in response.content if block.type == "text"),
+            "申し訳ありません。うまく答えられませんでした。",
+        )
 
     # 会話履歴にはテキストのみ保存（server_tool_use ブロックは不要）
     history.append({"role": "assistant", "content": reply_text})
