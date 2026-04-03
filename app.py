@@ -15,6 +15,7 @@ from linebot.models import (
     MessageEvent, TextMessage, TextSendMessage, FollowEvent,
     TemplateSendMessage, ButtonsTemplate, ConfirmTemplate,
     CarouselTemplate, CarouselColumn, MessageAction, URIAction,
+    QuickReply, QuickReplyButton,
 )
 import anthropic
 from supabase import create_client
@@ -142,7 +143,67 @@ WEB_SEARCH_TOOLS_V1 = [
 ]
 
 
+_MENU_QR_ITEMS = [
+    ("📱 スマホ相談",     "スマホの使い方について教えてください"),
+    ("🏥 病院・薬局",     "近くの病院や薬局を教えてください"),
+    ("☀️ 天気・防災",     "今日の藤沢の天気を教えてください"),
+    ("🛒 ごはん・買い物",  "藤沢のおすすめのお店を教えてください"),
+    ("🗑️ ごみ出し",       "ごみ出しのルールを教えてください"),
+    ("📰 藤沢の今",       "藤沢市の最新情報を教えてください"),
+]
+
 # ── リッチメッセージ ヘルパー ──────────────────────────
+
+def _build_quick_reply(items: list[tuple[str, str]]) -> QuickReply:
+    """(label, text) のペアリストからQuickReplyを作る。最大13件。"""
+    return QuickReply(items=[
+        QuickReplyButton(action=MessageAction(label=label, text=text))
+        for label, text in items[:13]
+    ])
+
+
+def _get_context_quick_reply(user_message: str) -> QuickReply:
+    """メッセージ内容に合ったコンテキストのQuickReplyを返す。"""
+    back = [("📋 最初に戻る", "最初に戻る")]
+
+    if _is_food_query(user_message):
+        items = [
+            ("他のお店も見る",   "他のおすすめのお店も教えてください"),
+            ("近くのカフェは？", "近くのカフェを教えてください"),
+            ("テイクアウトは？", "テイクアウトできるお店を教えてください"),
+        ] + back
+    elif "天気" in user_message or "気温" in user_message or "雨" in user_message:
+        items = [
+            ("明日の天気は？",   "明日の藤沢の天気を教えてください"),
+            ("週間予報は？",     "今週の藤沢の天気を教えてください"),
+            ("防災情報は？",     "藤沢の防災情報を教えてください"),
+        ] + back
+    elif "病院" in user_message or "薬局" in user_message or "医" in user_message:
+        items = [
+            ("近くの薬局は？",   "近くの薬局を教えてください"),
+            ("救急はどこ？",     "藤沢の救急病院を教えてください"),
+            ("診療時間は？",     "診療時間を教えてください"),
+        ] + back
+    elif "スマホ" in user_message or "携帯" in user_message or "スマートフォン" in user_message:
+        items = [
+            ("もう少し詳しく",   "もう少し詳しく教えてください"),
+            ("写真の撮り方は？", "スマホで写真の撮り方を教えてください"),
+            ("LINE の使い方",    "LINEの基本的な使い方を教えてください"),
+        ] + back
+    elif "ごみ" in user_message or "ゴミ" in user_message:
+        items = [
+            ("燃えないごみは？", "燃えないごみの出し方を教えてください"),
+            ("資源ごみは？",     "資源ごみの出し方を教えてください"),
+            ("粗大ごみは？",     "粗大ごみの出し方を教えてください"),
+        ] + back
+    else:
+        items = [
+            ("もう少し詳しく", "もう少し詳しく教えてください"),
+            ("他のことを聞く", "他のことを聞かせてください"),
+        ] + back
+
+    return _build_quick_reply(items)
+
 
 def _build_menu_message(name: str) -> TemplateSendMessage:
     """メインメニューをボタンテンプレートで返す。"""
@@ -181,20 +242,15 @@ def _build_registration_confirm(state: dict) -> TemplateSendMessage:
     )
 
 
-def _build_welcome_message(name: str) -> TemplateSendMessage:
-    """登録完了後のウェルカムメッセージをボタンテンプレートで返す。"""
-    return TemplateSendMessage(
-        alt_text=f"ご登録ありがとうございました、{name}さん。",
-        template=ButtonsTemplate(
-            title=f"ようこそ、{name}さん",
-            text="さっそく何でも聞いてみてください。",
-            actions=[
-                MessageAction(label="📱 スマホ相談",    text="スマホの使い方について教えてください"),
-                MessageAction(label="☀️ 天気・防災",    text="今日の天気と防災情報を教えてください"),
-                MessageAction(label="🏥 病院・薬局",    text="近くの病院や薬局を教えてください"),
-                MessageAction(label="🛒 ごはん・買い物", text="近くのお店やおすすめを教えてください"),
-            ],
+def _build_welcome_message(name: str) -> TextSendMessage:
+    """登録完了後のウェルカムメッセージをQuickReply付きテキストで返す。"""
+    return TextSendMessage(
+        text=(
+            f"ご登録ありがとうございました。\n"
+            f"{name}さん、これからよろしくお願いします。\n\n"
+            "下のボタンをタップして、さっそく使ってみてください。"
         ),
+        quick_reply=_build_quick_reply(_MENU_QR_ITEMS),
     )
 
 
@@ -562,7 +618,13 @@ def handle_message(event):
     RESET_KEYWORDS = {"最初に戻る", "メニュー", "メニューに戻る", "他のことを聞く", "はじめに戻る", "トップ", "ホーム"}
     if user_message.strip() in RESET_KEYWORDS:
         conversation_histories.pop(user_id, None)
-        line_bot_api.reply_message(event.reply_token, _build_menu_message(user_info["name"]))
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=f"{user_info['name']}さん、何でもどうぞ。\n下のボタンをタップしてください。",
+                quick_reply=_build_quick_reply(_MENU_QR_ITEMS),
+            ),
+        )
         return
 
     # 登録済みユーザーへの Claude 返答：Web 検索で 30 秒超えることがあるため
@@ -584,7 +646,13 @@ def handle_message(event):
         except Exception as e:
             logging.exception("_process error: %s", e)
         try:
-            messages_to_send = [TextSendMessage(text=reply_text)]
+            # Claude返答にコンテキスト対応のQuickReplyを添付
+            messages_to_send = [
+                TextSendMessage(
+                    text=reply_text,
+                    quick_reply=_get_context_quick_reply(msg),
+                )
+            ]
             # 飲食系クエリかつ藤沢ユーザーならカルーセルも追加
             user_region = (uinfo or {}).get("region", "")
             if _is_food_query(msg) and "藤沢" in user_region:
