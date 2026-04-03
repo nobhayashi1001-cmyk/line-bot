@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 import sentry_sdk
@@ -106,6 +107,11 @@ SYSTEM_PROMPT = """あなたは「地元くらしの御用聞き」です。
 【優先カテゴリ】
 スマホ相談・病院や薬局・買い物・飲食・行政情報・ごみ出し・天気と防災・詐欺SMS相談
 
+【最新情報について】
+天気・交通・イベントなど、リアルタイムの情報はお答えできません。
+その場合は「天気予報はスマホの天気アプリかテレビでご確認ください」など、
+確認方法をやさしく案内してください。
+
 【わからない時】
 ・推測で断定しない
 ・情報が足りない時は、その旨をやさしく伝える
@@ -125,22 +131,9 @@ SYSTEM_PROMPT = """あなたは「地元くらしの御用聞き」です。
 ・医療・法律・お金の専門判断
 ・AIっぽい堅い言い回し（「承知しました」「かしこまりました」など）"""
 
-MAX_HISTORY = 20
-MAX_WEB_SEARCH_TURNS = 5   # pause_turn の最大継続回数
-WEB_SEARCH_TIMEOUT   = 10  # Web検索ありAPI呼び出しのタイムアウト（秒）
-NO_TOOL_TIMEOUT      = 20  # Web検索なしAPI呼び出しのタイムアウト（秒）
-TOTAL_REPLY_TIMEOUT  = 28  # 返答全体のハードタイムアウト（秒）- 30秒以内を保証
-
-# 最新版（Sonnet 4.6 / Opus 4.6 でダイナミックフィルタリング対応）
-WEB_SEARCH_TOOLS_V2 = [
-    {"type": "web_search_20260209", "name": "web_search"},
-    {"type": "web_fetch_20260209",  "name": "web_fetch"},
-]
-# 旧版（全モデル対応、フォールバック用）
-WEB_SEARCH_TOOLS_V1 = [
-    {"type": "web_search_20250305", "name": "web_search"},
-    {"type": "web_fetch_20250910",  "name": "web_fetch"},
-]
+MAX_HISTORY         = 20
+API_TIMEOUT         = 25  # Claude API呼び出しのタイムアウト（秒）
+TOTAL_REPLY_TIMEOUT = 28  # 返答全体のハードタイムアウト（秒）
 
 
 _MENU_QR_ITEMS = [
@@ -398,19 +391,6 @@ def _is_food_query(message: str) -> bool:
     return any(kw in message for kw in _FOOD_TRIGGER_KEYWORDS)
 
 
-# Web検索が必要なキーワード（リアルタイム情報が必要な場合のみ）
-_WEB_SEARCH_KEYWORDS = {
-    "天気", "気温", "予報", "雨", "台風", "雪", "晴れ", "曇り",
-    "今日", "明日", "今週", "最新", "最近", "ニュース", "情報",
-    "現在", "今の", "今は", "いま", "何時", "開いてる", "営業",
-    "イベント", "祭り", "工事", "渋滞", "運休", "遅延",
-}
-
-
-def _needs_web_search(message: str) -> bool:
-    """リアルタイム情報が必要な質問かどうかを判定する。"""
-    return any(kw in message for kw in _WEB_SEARCH_KEYWORDS)
-
 
 def _query_restaurants(message: str) -> list[dict]:
     """メッセージからジャンル・エリアを抽出してDBを検索し、生データリストを返す。"""
@@ -502,60 +482,26 @@ def get_claude_reply(user_id: str, user_message: str, user_info: dict | None = N
         if restaurant_context:
             system += f"\n\n{restaurant_context}\n上記の情報を参考にして答えてください。"
 
-    response = None
-
-    # 三段階フォールバック:
-    #   1. 最新ツール (web_search_20260209 / web_fetch_20260209)
-    #   2. 旧ツール   (web_search_20250305 / web_fetch_20250910)
-    #   3. ツールなし（RAGデータとClaudeの知識のみで回答）
-    # Web検索が必要な質問のみV2ツールを試みる。それ以外は最初からツールなし。
-    tool_candidates = (WEB_SEARCH_TOOLS_V2, None) if _needs_web_search(user_message) else (None,)
-    for tools in tool_candidates:
-        try:
-            messages = list(history)
-            # すべてのAPI呼び出しに明示的タイムアウトを設定（スレッド蓄積を防ぐ）
-            # Web検索あり: 15秒 / Web検索なし: 20秒
-            api_timeout = float(WEB_SEARCH_TIMEOUT) if tools else float(NO_TOOL_TIMEOUT)
-            # ツールなしの場合はWeb検索不可をシステムプロンプトに明示し、
-            # RAGデータとClaudeの知識だけで誠実に回答するよう指示する
-            current_system = system if tools else (
-                system + "\n\n【現在の制約】インターネット検索は現在利用できません。"
-                "登録済みの地域情報（RAGデータ）とあなた自身の知識の範囲で誠実にお答えください。"
-                "最新情報が必要な場合は「最新の情報はお確かめください」と一言添えてください。"
-            )
-            for _ in range(MAX_WEB_SEARCH_TURNS + 1):
-                kwargs = dict(
-                    model="claude-sonnet-4-6",
-                    max_tokens=1024,
-                    system=current_system,
-                    messages=messages,
-                    timeout=api_timeout,
-                )
-                if tools:
-                    kwargs["tools"] = tools
-                response = anthropic_client.messages.create(**kwargs)
-
-                if response.stop_reason == "end_turn":
-                    break
-                if response.stop_reason == "pause_turn":
-                    messages.append({"role": "assistant", "content": response.content})
-                    continue
-                break
-            break  # 成功したのでフォールバックループを抜ける
-
-        except Exception as e:
-            # BadRequestError・APITimeoutError・その他すべての例外でフォールバック
-            logging.error("tool request failed (%s), trying next fallback: %s", tools, e)
-            response = None
-            continue  # 次のツールセットで再試行
-
-    if response is None:
-        reply_text = "申し訳ありません。\nただいま少し混み合っています。\nしばらくしてからもう一度お試しください。"
-    else:
+    try:
+        response = anthropic_client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            system=system,
+            messages=history,
+            timeout=API_TIMEOUT,
+        )
         reply_text = next(
             (block.text for block in response.content if block.type == "text"),
             "申し訳ありません。うまく答えられませんでした。",
         )
+    except Exception as e:
+        logging.exception("Claude API error: %s", e)
+        reply_text = "申し訳ありません。\nただいま少し混み合っています。\nしばらくしてからもう一度お試しください。"
+
+    # LINEに不要なMarkdown記法を除去（**太字**・*斜体*・# 見出し）
+    reply_text = re.sub(r'\*\*(.+?)\*\*', r'\1', reply_text)
+    reply_text = re.sub(r'\*(.+?)\*',     r'\1', reply_text)
+    reply_text = re.sub(r'^#{1,6}\s+',    '',    reply_text, flags=re.MULTILINE)
 
     _save_message(user_id, "assistant", reply_text)
     return reply_text
