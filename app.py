@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from flask import Flask, request, abort
 
 logging.basicConfig(level=logging.ERROR)
@@ -118,7 +119,9 @@ SYSTEM_PROMPT = """あなたは「地元くらしの御用聞き」です。
 ・AIっぽい堅い言い回し（「承知しました」「かしこまりました」など）"""
 
 MAX_HISTORY = 20
-MAX_WEB_SEARCH_TURNS = 5  # pause_turn の最大継続回数
+MAX_WEB_SEARCH_TURNS = 5   # pause_turn の最大継続回数
+WEB_SEARCH_TIMEOUT   = 15  # Web検索1回あたりのタイムアウト（秒）
+TOTAL_REPLY_TIMEOUT  = 25  # 返答全体のハードタイムアウト（秒）
 
 # 最新版（Sonnet 4.6 / Opus 4.6 でダイナミックフィルタリング対応）
 WEB_SEARCH_TOOLS_V2 = [
@@ -338,8 +341,8 @@ def get_claude_reply(user_id: str, user_message: str, user_info: dict | None = N
     for tools in (WEB_SEARCH_TOOLS_V2, WEB_SEARCH_TOOLS_V1, None):
         try:
             messages = list(history)
-            # Web検索ありは20秒タイムアウト。タイムアウト時はno-toolsにフォールバック。
-            api_timeout = 20.0 if tools else None
+            # Web検索ありは15秒タイムアウト。タイムアウト時はno-toolsにフォールバック。
+            api_timeout = float(WEB_SEARCH_TIMEOUT) if tools else None
             for _ in range(MAX_WEB_SEARCH_TURNS + 1):
                 kwargs = dict(
                     model="claude-sonnet-4-6",
@@ -361,7 +364,8 @@ def get_claude_reply(user_id: str, user_message: str, user_info: dict | None = N
                 break
             break  # 成功したのでフォールバックループを抜ける
 
-        except (anthropic.BadRequestError, anthropic.APITimeoutError) as e:
+        except Exception as e:
+            # BadRequestError・APITimeoutError・その他すべての例外でフォールバック
             logging.error("tool request failed (%s), trying next fallback: %s", tools, e)
             response = None
             continue  # 次のツールセットで再試行
@@ -458,10 +462,19 @@ def handle_message(event):
         reply_text = "申し訳ありません。\nただいま少し調子が悪いようです。\nしばらくしてからもう一度お試しください。"
         try:
             _save_message(uid, "user", msg)
-            reply_text = get_claude_reply(uid, msg, uinfo)
-            _save_message(uid, "assistant", reply_text)
+            # TOTAL_REPLY_TIMEOUT 秒のハードタイムアウトで30秒以内の返答を保証
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(get_claude_reply, uid, msg, uinfo)
+                try:
+                    reply_text = future.result(timeout=TOTAL_REPLY_TIMEOUT)
+                    _save_message(uid, "assistant", reply_text)
+                except FuturesTimeoutError:
+                    logging.error("get_claude_reply timed out after %ds", TOTAL_REPLY_TIMEOUT)
+                    reply_text = "少し時間がかかってしまいました。\nもう一度送っていただけますか？"
+                except Exception as e:
+                    logging.exception("Claude reply error: %s", e)
         except Exception as e:
-            logging.exception("Claude reply error: %s", e)
+            logging.exception("_process error: %s", e)
         try:
             line_bot_api.push_message(uid, TextSendMessage(text=reply_text))
         except Exception as e:
