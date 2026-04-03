@@ -120,8 +120,9 @@ SYSTEM_PROMPT = """あなたは「地元くらしの御用聞き」です。
 
 MAX_HISTORY = 20
 MAX_WEB_SEARCH_TURNS = 5   # pause_turn の最大継続回数
-WEB_SEARCH_TIMEOUT   = 15  # Web検索1回あたりのタイムアウト（秒）
-TOTAL_REPLY_TIMEOUT  = 25  # 返答全体のハードタイムアウト（秒）
+WEB_SEARCH_TIMEOUT   = 15  # Web検索ありAPI呼び出しのタイムアウト（秒）
+NO_TOOL_TIMEOUT      = 20  # Web検索なしAPI呼び出しのタイムアウト（秒）
+TOTAL_REPLY_TIMEOUT  = 28  # 返答全体のハードタイムアウト（秒）- 30秒以内を保証
 
 # 最新版（Sonnet 4.6 / Opus 4.6 でダイナミックフィルタリング対応）
 WEB_SEARCH_TOOLS_V2 = [
@@ -337,23 +338,30 @@ def get_claude_reply(user_id: str, user_message: str, user_info: dict | None = N
     # 三段階フォールバック:
     #   1. 最新ツール (web_search_20260209 / web_fetch_20260209)
     #   2. 旧ツール   (web_search_20250305 / web_fetch_20250910)
-    #   3. ツールなし
+    #   3. ツールなし（RAGデータとClaudeの知識のみで回答）
     for tools in (WEB_SEARCH_TOOLS_V2, WEB_SEARCH_TOOLS_V1, None):
         try:
             messages = list(history)
-            # Web検索ありは15秒タイムアウト。タイムアウト時はno-toolsにフォールバック。
-            api_timeout = float(WEB_SEARCH_TIMEOUT) if tools else None
+            # すべてのAPI呼び出しに明示的タイムアウトを設定（スレッド蓄積を防ぐ）
+            # Web検索あり: 15秒 / Web検索なし: 20秒
+            api_timeout = float(WEB_SEARCH_TIMEOUT) if tools else float(NO_TOOL_TIMEOUT)
+            # ツールなしの場合はWeb検索不可をシステムプロンプトに明示し、
+            # RAGデータとClaudeの知識だけで誠実に回答するよう指示する
+            current_system = system if tools else (
+                system + "\n\n【現在の制約】インターネット検索は現在利用できません。"
+                "登録済みの地域情報（RAGデータ）とあなた自身の知識の範囲で誠実にお答えください。"
+                "最新情報が必要な場合は「最新の情報はお確かめください」と一言添えてください。"
+            )
             for _ in range(MAX_WEB_SEARCH_TURNS + 1):
                 kwargs = dict(
                     model="claude-sonnet-4-6",
                     max_tokens=1024,
-                    system=system,
+                    system=current_system,
                     messages=messages,
+                    timeout=api_timeout,
                 )
                 if tools:
                     kwargs["tools"] = tools
-                if api_timeout:
-                    kwargs["timeout"] = api_timeout
                 response = anthropic_client.messages.create(**kwargs)
 
                 if response.stop_reason == "end_turn":
