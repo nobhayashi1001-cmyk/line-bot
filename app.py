@@ -218,11 +218,29 @@ def _get_user(user_id: str) -> dict | None:
     return user
 
 
+def _load_history(user_id: str) -> list[dict]:
+    """Supabaseから会話履歴を復元する。"""
+    try:
+        result = (
+            get_supabase().table("messages")
+            .select("role, content")
+            .eq("line_user_id", user_id)
+            .order("created_at", desc=False)
+            .limit(MAX_HISTORY)
+            .execute()
+        )
+        return [{"role": r["role"], "content": r["content"]} for r in result.data]
+    except Exception as e:
+        logging.error("failed to load history from DB: %s", e)
+        return []
+
+
 # ── Claude 返答 ────────────────────────────────────────
 
 def get_claude_reply(user_id: str, user_message: str, user_info: dict | None = None) -> str:
+    # オンメモリ履歴がない場合（初回アクセスまたはサーバー再起動後）はDBから復元
     if user_id not in conversation_histories:
-        conversation_histories[user_id] = []
+        conversation_histories[user_id] = _load_history(user_id)
 
     history = conversation_histories[user_id]
     history.append({"role": "user", "content": user_message})
