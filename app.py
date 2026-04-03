@@ -231,6 +231,8 @@ def get_claude_reply(user_id: str, user_message: str) -> str:
     for tools in (WEB_SEARCH_TOOLS_V2, WEB_SEARCH_TOOLS_V1, None):
         try:
             messages = list(history)
+            # Web検索ありは20秒タイムアウト。タイムアウト時はno-toolsにフォールバック。
+            api_timeout = 20.0 if tools else None
             for _ in range(MAX_WEB_SEARCH_TURNS + 1):
                 kwargs = dict(
                     model="claude-sonnet-4-6",
@@ -240,6 +242,8 @@ def get_claude_reply(user_id: str, user_message: str) -> str:
                 )
                 if tools:
                     kwargs["tools"] = tools
+                if api_timeout:
+                    kwargs["timeout"] = api_timeout
                 response = anthropic_client.messages.create(**kwargs)
 
                 if response.stop_reason == "end_turn":
@@ -250,7 +254,7 @@ def get_claude_reply(user_id: str, user_message: str) -> str:
                 break
             break  # 成功したのでフォールバックループを抜ける
 
-        except anthropic.BadRequestError as e:
+        except (anthropic.BadRequestError, anthropic.APITimeoutError) as e:
             logging.error("tool request failed (%s), trying next fallback: %s", tools, e)
             response = None
             continue  # 次のツールセットで再試行
