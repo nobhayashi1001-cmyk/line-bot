@@ -126,7 +126,7 @@ SYSTEM_PROMPT = """あなたは「地元くらしの御用聞き」です。
 
 MAX_HISTORY = 20
 MAX_WEB_SEARCH_TURNS = 5   # pause_turn の最大継続回数
-WEB_SEARCH_TIMEOUT   = 15  # Web検索ありAPI呼び出しのタイムアウト（秒）
+WEB_SEARCH_TIMEOUT   = 10  # Web検索ありAPI呼び出しのタイムアウト（秒）
 NO_TOOL_TIMEOUT      = 20  # Web検索なしAPI呼び出しのタイムアウト（秒）
 TOTAL_REPLY_TIMEOUT  = 28  # 返答全体のハードタイムアウト（秒）- 30秒以内を保証
 
@@ -438,7 +438,8 @@ def get_claude_reply(user_id: str, user_message: str, user_info: dict | None = N
     #   1. 最新ツール (web_search_20260209 / web_fetch_20260209)
     #   2. 旧ツール   (web_search_20250305 / web_fetch_20250910)
     #   3. ツールなし（RAGデータとClaudeの知識のみで回答）
-    for tools in (WEB_SEARCH_TOOLS_V2, WEB_SEARCH_TOOLS_V1, None):
+    # V2ツール(10秒) → 失敗したら即ツールなし。V1は削除（時間がかかりすぎるため）
+    for tools in (WEB_SEARCH_TOOLS_V2, None):
         try:
             messages = list(history)
             # すべてのAPI呼び出しに明示的タイムアウトを設定（スレッド蓄積を防ぐ）
