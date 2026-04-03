@@ -17,3 +17,5 @@ services:
         sync: false
       - key: SUPABASE_KEY
         sync: false
+      - key: SENTRY_DSN
+        sync: false

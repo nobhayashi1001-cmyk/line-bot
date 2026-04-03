@@ -4,6 +4,8 @@ import logging
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+import sentry_sdk
+from sentry_sdk.integrations.flask import FlaskIntegration
 from flask import Flask, request, abort
 
 logging.basicConfig(level=logging.ERROR)
@@ -19,6 +21,14 @@ import anthropic
 from supabase import create_client
 
 app = Flask(__name__)
+
+_SENTRY_DSN = os.environ.get("SENTRY_DSN")
+if _SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=_SENTRY_DSN,
+        integrations=[FlaskIntegration()],
+        traces_sample_rate=0.1,
+    )
 
 LINE_CHANNEL_ACCESS_TOKEN = os.environ["LINE_CHANNEL_ACCESS_TOKEN"]
 LINE_CHANNEL_SECRET = os.environ["LINE_CHANNEL_SECRET"]
@@ -37,9 +47,6 @@ def get_supabase():
     if _supabase is None:
         _supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     return _supabase
-
-# 通常会話の履歴: {user_id: [{"role": ..., "content": ...}]}
-conversation_histories: dict[str, list[dict]] = {}
 
 # 登録フローの途中状態: {user_id: {"step": str, "name": str, "region": str}}
 registration_states: dict[str, dict] = {}
@@ -206,6 +213,14 @@ def _save_message(user_id: str, role: str, content: str) -> None:
         pass  # ログ保存の失敗は返答処理に影響させない
 
 
+def _clear_history(user_id: str) -> None:
+    """指定ユーザーの会話履歴をDBから削除する。"""
+    try:
+        get_supabase().table("messages").delete().eq("line_user_id", user_id).execute()
+    except Exception as e:
+        logging.error("failed to clear history: %s", e)
+
+
 def _get_user(user_id: str) -> dict | None:
     """DBからユーザー情報を取得する。結果はキャッシュする。未登録の場合はNoneを返す。"""
     if user_id in user_cache:
@@ -306,16 +321,13 @@ def _load_history(user_id: str) -> list[dict]:
 # ── Claude 返答 ────────────────────────────────────────
 
 def get_claude_reply(user_id: str, user_message: str, user_info: dict | None = None) -> str:
-    # オンメモリ履歴がない場合（初回アクセスまたはサーバー再起動後）はDBから復元
-    if user_id not in conversation_histories:
-        conversation_histories[user_id] = _load_history(user_id)
-
-    history = conversation_histories[user_id]
+    # 毎回DBから履歴を取得（DBが唯一の真実源。サーバー再起動・複数ワーカーに対応）
+    history = _load_history(user_id)
     history.append({"role": "user", "content": user_message})
+    _save_message(user_id, "user", user_message)
 
     if len(history) > MAX_HISTORY:
         history = history[-MAX_HISTORY:]
-        conversation_histories[user_id] = history
 
     # ユーザー情報をシステムプロンプトに動的に注入
     system = SYSTEM_PROMPT
@@ -386,8 +398,7 @@ def get_claude_reply(user_id: str, user_message: str, user_info: dict | None = N
             "申し訳ありません。うまく答えられませんでした。",
         )
 
-    # 会話履歴にはテキストのみ保存（server_tool_use ブロックは不要）
-    history.append({"role": "assistant", "content": reply_text})
+    _save_message(user_id, "assistant", reply_text)
     return reply_text
 
 
@@ -448,7 +459,7 @@ def handle_message(event):
     # 「最初に戻る」系キーワード：履歴をリセットしてメニューを案内（Claudeを呼ばない）
     RESET_KEYWORDS = {"最初に戻る", "メニュー", "メニューに戻る", "他のことを聞く", "はじめに戻る", "トップ", "ホーム"}
     if user_message.strip() in RESET_KEYWORDS:
-        conversation_histories.pop(user_id, None)
+        _clear_history(user_id)
         name = user_info["name"]
         reply_text = (
             f"{name}さん、何でもどうぞ。\n\n"
@@ -469,13 +480,12 @@ def handle_message(event):
     def _process(uid: str, msg: str, uinfo: dict) -> None:
         reply_text = "申し訳ありません。\nただいま少し調子が悪いようです。\nしばらくしてからもう一度お試しください。"
         try:
-            _save_message(uid, "user", msg)
             # TOTAL_REPLY_TIMEOUT 秒のハードタイムアウトで30秒以内の返答を保証
+            # メッセージのDB保存は get_claude_reply 内で行う
             with ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(get_claude_reply, uid, msg, uinfo)
                 try:
                     reply_text = future.result(timeout=TOTAL_REPLY_TIMEOUT)
-                    _save_message(uid, "assistant", reply_text)
                 except FuturesTimeoutError:
                     logging.error("get_claude_reply timed out after %ds", TOTAL_REPLY_TIMEOUT)
                     reply_text = "少し時間がかかってしまいました。\nもう一度送っていただけますか？"
