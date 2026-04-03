@@ -12,10 +12,9 @@ logging.basicConfig(level=logging.ERROR)
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import (
-    MessageEvent,
-    TextMessage,
-    TextSendMessage,
-    FollowEvent,
+    MessageEvent, TextMessage, TextSendMessage, FollowEvent,
+    TemplateSendMessage, ButtonsTemplate, ConfirmTemplate,
+    CarouselTemplate, CarouselColumn, MessageAction, URIAction,
 )
 import anthropic
 from supabase import create_client
@@ -143,52 +142,138 @@ WEB_SEARCH_TOOLS_V1 = [
 ]
 
 
-# ── 登録フロー ─────────────────────────────────────────
+# ── リッチメッセージ ヘルパー ──────────────────────────
 
-def start_registration(user_id: str) -> str:
-    registration_states[user_id] = {"step": "awaiting_name"}
-    return (
-        "はじめまして。\n"
-        "ご利用にあたって、簡単なご登録をお願いします。\n\n"
-        "まず、お名前を教えていただけますか？"
+def _build_menu_message(name: str) -> TemplateSendMessage:
+    """メインメニューをボタンテンプレートで返す。"""
+    return TemplateSendMessage(
+        alt_text=f"{name}さん、何でもどうぞ。",
+        template=ButtonsTemplate(
+            title="メニュー",
+            text=f"{name}さん、何でもどうぞ。",
+            actions=[
+                MessageAction(label="📱 スマホ相談",    text="スマホの使い方について教えてください"),
+                MessageAction(label="☀️ 天気・防災",    text="今日の天気と防災情報を教えてください"),
+                MessageAction(label="🏥 病院・薬局",    text="近くの病院や薬局を教えてください"),
+                MessageAction(label="🛒 ごはん・買い物", text="近くのお店やおすすめを教えてください"),
+            ],
+        ),
     )
 
 
-def handle_registration(user_id: str, message: str) -> str:
+def _build_registration_confirm(state: dict) -> TemplateSendMessage:
+    """登録内容の確認テンプレートを返す。"""
+    return TemplateSendMessage(
+        alt_text="登録内容の確認",
+        template=ConfirmTemplate(
+            text=(
+                f"確認します。\n"
+                f"お名前：{state['name']}さん\n"
+                f"地域：{state['region']}\n"
+                f"生年月日：{state['birthdate']}\n"
+                "この内容でよろしいですか？"
+            ),
+            actions=[
+                MessageAction(label="はい、登録します",  text="はい"),
+                MessageAction(label="最初からやり直す",  text="やり直す"),
+            ],
+        ),
+    )
+
+
+def _build_welcome_message(name: str) -> TemplateSendMessage:
+    """登録完了後のウェルカムメッセージをボタンテンプレートで返す。"""
+    return TemplateSendMessage(
+        alt_text=f"ご登録ありがとうございました、{name}さん。",
+        template=ButtonsTemplate(
+            title=f"ようこそ、{name}さん",
+            text="さっそく何でも聞いてみてください。",
+            actions=[
+                MessageAction(label="📱 スマホ相談",    text="スマホの使い方について教えてください"),
+                MessageAction(label="☀️ 天気・防災",    text="今日の天気と防災情報を教えてください"),
+                MessageAction(label="🏥 病院・薬局",    text="近くの病院や薬局を教えてください"),
+                MessageAction(label="🛒 ごはん・買い物", text="近くのお店やおすすめを教えてください"),
+            ],
+        ),
+    )
+
+
+def _build_restaurant_carousel(restaurants: list[dict]) -> TemplateSendMessage:
+    """飲食店リストをカルーセルテンプレートで返す。"""
+    columns = []
+    for r in restaurants[:10]:
+        parts = [r.get("genre", ""), r.get("area", "")]
+        if r.get("rating"):
+            parts.append(f"評価{r['rating']}")
+        text = " / ".join(p for p in parts if p)[:60] or "詳細情報"
+
+        actions: list = [
+            MessageAction(label="詳しく聞く", text=f"{r['name']}について詳しく教えてください"),
+        ]
+        if r.get("phone"):
+            actions.append(URIAction(label="電話する", uri=f"tel:{r['phone']}"))
+
+        columns.append(CarouselColumn(
+            title=r["name"][:40],
+            text=text,
+            actions=actions,
+        ))
+
+    return TemplateSendMessage(
+        alt_text="お店の情報",
+        template=CarouselTemplate(columns=columns),
+    )
+
+
+# ── 登録フロー ─────────────────────────────────────────
+
+def start_registration(user_id: str) -> TextSendMessage:
+    registration_states[user_id] = {"step": "awaiting_name"}
+    return TextSendMessage(text=(
+        "はじめまして。\n"
+        "ご利用にあたって、簡単なご登録をお願いします。\n\n"
+        "まず、お名前を教えていただけますか？"
+    ))
+
+
+def handle_registration(user_id: str, message: str) -> TemplateSendMessage | TextSendMessage:
     state = registration_states[user_id]
     step = state["step"]
 
     if step == "awaiting_name":
         state["name"] = message.strip()
         state["step"] = "awaiting_region"
-        return (
+        return TextSendMessage(text=(
             f"{state['name']}さん、ありがとうございます。\n\n"
             "お住まいの市区町村を教えていただけますか？\n"
             "（例：藤沢市、横浜市港北区、大阪市天王寺区）"
-        )
+        ))
 
     if step == "awaiting_region":
         state["region"] = message.strip()
         state["step"] = "awaiting_birthdate"
-        return (
+        return TextSendMessage(text=(
             "ありがとうございます。\n\n"
             "最後に、生年月日を教えていただけますか？\n"
             "（例：1950年1月15日）"
-        )
+        ))
 
     if step == "awaiting_birthdate":
         state["birthdate"] = message.strip()
-        _save_user(user_id, state)
-        name = state["name"]
-        del registration_states[user_id]
-        return (
-            f"ご登録ありがとうございました。\n"
-            f"{name}さん、これからどうぞよろしくお願いします。\n\n"
-            "何かお困りのことや、聞いてみたいことがあれば、\n"
-            "いつでもお気軽にメッセージをどうぞ。"
-        )
+        state["step"] = "awaiting_confirmation"
+        return _build_registration_confirm(state)
 
-    return "少々お待ちください。"
+    if step == "awaiting_confirmation":
+        if message.strip() == "はい":
+            _save_user(user_id, state)
+            name = state["name"]
+            del registration_states[user_id]
+            return _build_welcome_message(name)
+        else:
+            registration_states[user_id] = {"step": "awaiting_name"}
+            return TextSendMessage(text="わかりました。最初からやり直しましょう。\nお名前を教えてください。")
+
+    return TextSendMessage(text="少々お待ちください。")
 
 
 def _save_user(user_id: str, state: dict) -> None:
@@ -257,48 +342,50 @@ def _is_food_query(message: str) -> bool:
     return any(kw in message for kw in _FOOD_TRIGGER_KEYWORDS)
 
 
-def _search_restaurants(message: str) -> str:
-    """メッセージからジャンル・エリアを抽出してDBを検索し、Claudeに渡す文字列を返す。"""
+def _query_restaurants(message: str) -> list[dict]:
+    """メッセージからジャンル・エリアを抽出してDBを検索し、生データリストを返す。"""
     genre = next((kw for kw in _GENRE_KEYWORDS if kw in message), None)
     area  = next((kw for kw in _AREA_KEYWORDS  if kw in message), None)
     try:
-        q = (
-            get_supabase().table("restaurants")
-            .select("name, genre, area, address, phone, rating")
-        )
+        q = get_supabase().table("restaurants").select("name, genre, area, address, phone, rating")
         if genre:
             q = q.ilike("genre", f"%{genre}%")
         if area:
             q = q.ilike("area", f"%{area}%")
-        result = q.order("rating", desc=True).limit(5).execute()
-
-        # ジャンル・エリアで絞れなかった場合は評価順上位を返す
+        result = q.order("rating", desc=True).limit(10).execute()
         if not result.data:
             result = (
                 get_supabase().table("restaurants")
                 .select("name, genre, area, address, phone, rating")
                 .order("rating", desc=True)
-                .limit(5)
+                .limit(10)
                 .execute()
             )
-        if not result.data:
-            return ""
-
-        label = f"【藤沢の{genre or 'お店'}情報】" if not area else f"【{area}周辺の{genre or 'お店'}情報】"
-        lines = [label]
-        for r in result.data:
-            line = f"・{r['name']}（{r['genre']}／{r['area']}）"
-            if r.get("rating"):
-                line += f" 評価{r['rating']}"
-            if r.get("phone"):
-                line += f" ☎{r['phone']}"
-            if r.get("address"):
-                line += f" 住所:{r['address']}"
-            lines.append(line)
-        return "\n".join(lines)
+        return result.data or []
     except Exception as e:
         logging.error("restaurant search error: %s", e)
+        return []
+
+
+def _search_restaurants(message: str) -> str:
+    """飲食店リストをClaudeのコンテキスト文字列に変換する。"""
+    restaurants = _query_restaurants(message)
+    if not restaurants:
         return ""
+    genre = next((kw for kw in _GENRE_KEYWORDS if kw in message), None)
+    area  = next((kw for kw in _AREA_KEYWORDS  if kw in message), None)
+    label = f"【{area}周辺の{genre or 'お店'}情報】" if area else f"【藤沢の{genre or 'お店'}情報】"
+    lines = [label]
+    for r in restaurants[:5]:
+        line = f"・{r['name']}（{r['genre']}／{r['area']}）"
+        if r.get("rating"):
+            line += f" 評価{r['rating']}"
+        if r.get("phone"):
+            line += f" ☎{r['phone']}"
+        if r.get("address"):
+            line += f" 住所:{r['address']}"
+        lines.append(line)
+    return "\n".join(lines)
 
 
 def _load_history(user_id: str) -> list[dict]:
@@ -424,11 +511,11 @@ def handle_follow(event):
 
     user = _get_user(user_id)
     if user:
-        reply = f"またお会いできてうれしいです、{user['name']}さん。\n何でもお気軽にどうぞ。"
+        reply = TextSendMessage(text=f"またお会いできてうれしいです、{user['name']}さん。\n何でもお気軽にどうぞ。")
     else:
         reply = start_registration(user_id)
 
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
+    line_bot_api.reply_message(event.reply_token, reply)
 
 
 @handler.add(MessageEvent, message=TextMessage)
@@ -439,14 +526,13 @@ def handle_message(event):
     # 登録フロー中・未登録は同期処理（Supabase 参照のみで高速）
     try:
         if user_id in registration_states:
-            reply_text = handle_registration(user_id, user_message)
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+            reply_msg = handle_registration(user_id, user_message)
+            line_bot_api.reply_message(event.reply_token, reply_msg)
             return
 
         user_info = _get_user(user_id)
         if user_info is None:
-            reply_text = start_registration(user_id)
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+            line_bot_api.reply_message(event.reply_token, start_registration(user_id))
             return
     except Exception as e:
         logging.exception("registration flow error: %s", e)
@@ -459,20 +545,8 @@ def handle_message(event):
     # 「最初に戻る」系キーワード：履歴をリセットしてメニューを案内（Claudeを呼ばない）
     RESET_KEYWORDS = {"最初に戻る", "メニュー", "メニューに戻る", "他のことを聞く", "はじめに戻る", "トップ", "ホーム"}
     if user_message.strip() in RESET_KEYWORDS:
-        _clear_history(user_id)
-        name = user_info["name"]
-        reply_text = (
-            f"{name}さん、何でもどうぞ。\n\n"
-            "📱 スマホ相談\n"
-            "🏥 病院・薬局\n"
-            "📰 藤沢の今\n"
-            "🗑️ ごみ出し\n"
-            "☀️ 天気・防災\n"
-            "🛒 ごはん・買い物\n\n"
-            "上のボタンか、気になることを\n"
-            "そのままメッセージで送ってください。"
-        )
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+        conversation_histories.pop(user_id, None)
+        line_bot_api.reply_message(event.reply_token, _build_menu_message(user_info["name"]))
         return
 
     # 登録済みユーザーへの Claude 返答：Web 検索で 30 秒超えることがあるため
@@ -494,7 +568,14 @@ def handle_message(event):
         except Exception as e:
             logging.exception("_process error: %s", e)
         try:
-            line_bot_api.push_message(uid, TextSendMessage(text=reply_text))
+            messages_to_send = [TextSendMessage(text=reply_text)]
+            # 飲食系クエリかつ藤沢ユーザーならカルーセルも追加
+            user_region = (uinfo or {}).get("region", "")
+            if _is_food_query(msg) and "藤沢" in user_region:
+                restaurants = _query_restaurants(msg)
+                if restaurants:
+                    messages_to_send.append(_build_restaurant_carousel(restaurants))
+            line_bot_api.push_message(uid, messages_to_send)
         except Exception as e:
             logging.exception("push_message error: %s", e)
 
