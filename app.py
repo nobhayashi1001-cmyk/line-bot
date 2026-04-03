@@ -359,6 +359,25 @@ def handle_message(event):
         )
         return
 
+    # 「最初に戻る」系キーワード：履歴をリセットしてメニューを案内（Claudeを呼ばない）
+    RESET_KEYWORDS = {"最初に戻る", "メニュー", "メニューに戻る", "他のことを聞く", "はじめに戻る", "トップ", "ホーム"}
+    if user_message.strip() in RESET_KEYWORDS:
+        conversation_histories.pop(user_id, None)
+        name = user_info["name"]
+        reply_text = (
+            f"{name}さん、何でもどうぞ。\n\n"
+            "📱 スマホ相談\n"
+            "🏥 病院・薬局\n"
+            "📰 藤沢の今\n"
+            "🗑️ ごみ出し\n"
+            "☀️ 天気・防災\n"
+            "🛒 ごはん・買い物\n\n"
+            "上のボタンか、気になることを\n"
+            "そのままメッセージで送ってください。"
+        )
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+        return
+
     # 登録済みユーザーへの Claude 返答：Web 検索で 30 秒超えることがあるため
     # バックグラウンドスレッドで処理し、reply_token 失効後も届く push_message で送信
     def _process(uid: str, msg: str, uinfo: dict) -> None:
