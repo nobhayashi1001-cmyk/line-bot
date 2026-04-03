@@ -14,3 +14,17 @@ CREATE TABLE IF NOT EXISTS messages (
     content      TEXT NOT NULL,
     created_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS restaurants (
+    id           BIGSERIAL PRIMARY KEY,
+    place_id     TEXT UNIQUE NOT NULL,
+    name         TEXT NOT NULL,
+    genre        TEXT,
+    area         TEXT,
+    address      TEXT,
+    phone        TEXT,
+    rating       NUMERIC(2,1),
+    price_level  INTEGER,
+    description  TEXT,
+    updated_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);

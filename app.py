@@ -218,6 +218,57 @@ def _get_user(user_id: str) -> dict | None:
     return user
 
 
+def _search_restaurants(query: str) -> str:
+    """飲食店クエリからDBを検索し、Claude に渡す文字列を返す。"""
+    try:
+        # ジャンル・エリアキーワードで絞り込む（ilike で部分一致）
+        result = (
+            get_supabase().table("restaurants")
+            .select("name, genre, area, address, phone, rating, description")
+            .ilike("description", f"%{query}%")
+            .order("rating", desc=True)
+            .limit(5)
+            .execute()
+        )
+        if not result.data:
+            # ジャンル・エリアで絞れなければ評価順上位を返す
+            result = (
+                get_supabase().table("restaurants")
+                .select("name, genre, area, address, phone, rating, description")
+                .order("rating", desc=True)
+                .limit(5)
+                .execute()
+            )
+        if not result.data:
+            return ""
+        lines = ["【近くのお店情報】"]
+        for r in result.data:
+            line = f"・{r['name']}（{r['genre']}／{r['area']}）"
+            if r.get("rating"):
+                line += f" 評価{r['rating']}"
+            if r.get("phone"):
+                line += f" ☎{r['phone']}"
+            if r.get("address"):
+                line += f" 住所:{r['address']}"
+            lines.append(line)
+        return "\n".join(lines)
+    except Exception as e:
+        logging.error("restaurant search error: %s", e)
+        return ""
+
+
+# 飲食・食事に関するキーワード
+_FOOD_KEYWORDS = {
+    "ごはん", "飯", "食事", "食べ", "ランチ", "ディナー", "夕食", "昼食", "朝食",
+    "レストラン", "カフェ", "喫茶", "ラーメン", "寿司", "そば", "うどん", "和食",
+    "中華", "イタリアン", "焼肉", "居酒屋", "バー", "お店", "おすすめ", "近く",
+}
+
+
+def _is_food_query(message: str) -> bool:
+    return any(kw in message for kw in _FOOD_KEYWORDS)
+
+
 def _load_history(user_id: str) -> list[dict]:
     """Supabaseから会話履歴を復元する。"""
     try:
@@ -257,6 +308,12 @@ def get_claude_reply(user_id: str, user_message: str, user_info: dict | None = N
             f"\n・お名前：{user_info['name']}（必ず「{user_info['name']}さん」と呼びかけてください）"
             f"\n・お住まいの地域：{user_info['region']}"
         )
+
+    # 飲食系の質問ならDBから店舗情報を取得してプロンプトに追加
+    if _is_food_query(user_message):
+        restaurant_context = _search_restaurants(user_message)
+        if restaurant_context:
+            system += f"\n\n{restaurant_context}\n上記の情報を参考にして答えてください。"
 
     response = None
 
