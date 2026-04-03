@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 藤沢市の飲食店データを Google Places API から取得して Supabase に保存するスクリプト。
 
