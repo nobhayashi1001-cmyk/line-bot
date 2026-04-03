@@ -563,7 +563,7 @@ def handle_message(event):
     # 「最初に戻る」系キーワード：履歴をリセットしてメニューを案内（Claudeを呼ばない）
     RESET_KEYWORDS = {"最初に戻る", "メニュー", "メニューに戻る", "他のことを聞く", "はじめに戻る", "トップ", "ホーム"}
     if user_message.strip() in RESET_KEYWORDS:
-        conversation_histories.pop(user_id, None)
+        _clear_history(user_id)
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(

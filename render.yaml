@@ -19,3 +19,19 @@ services:
         sync: false
       - key: SENTRY_DSN
         sync: false
+
+  - type: cron
+    name: morning-push
+    runtime: python
+    schedule: "0 22 * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python morning_push.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
