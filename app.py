@@ -3,8 +3,10 @@ from __future__ import annotations
 import logging
 import os
 import re
+import secrets
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from datetime import date
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
 from flask import Flask, request, abort
@@ -36,6 +38,8 @@ LINE_CHANNEL_SECRET = os.environ["LINE_CHANNEL_SECRET"]
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
+RICH_MENU_FREE_ID = os.environ.get("RICH_MENU_FREE_ID", "")
+RICH_MENU_PAID_ID = os.environ.get("RICH_MENU_PAID_ID", "")
 
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
@@ -135,15 +139,16 @@ SYSTEM_PROMPT = """あなたは「地元くらしの御用聞き」です。
 MAX_HISTORY         = 20
 API_TIMEOUT         = 25  # Claude API呼び出しのタイムアウト（秒）
 TOTAL_REPLY_TIMEOUT = 28  # 返答全体のハードタイムアウト（秒）
+FREE_DAILY_LIMIT    = 5   # 無料会員の1日あたり利用回数上限
 
 
 _MENU_QR_ITEMS = [
-    ("📱 スマホ相談",     "スマホの使い方について教えてください"),
-    ("🏥 病院・薬局",     "近くの病院や薬局を教えてください"),
-    ("☀️ 天気・防災",     "今日の藤沢の天気を教えてください"),
-    ("🛒 ごはん・買い物",  "藤沢のおすすめのお店を教えてください"),
-    ("🗑️ ごみ出し",       "ごみ出しのルールを教えてください"),
-    ("📰 藤沢の今",       "藤沢市の最新情報を教えてください"),
+    ("📰 地元情報",       "地元情報"),
+    ("🍽️ 食事・レシピ",   "食事・レシピ"),
+    ("🏥 健康",           "健康"),
+    ("🚶 運動",           "運動"),
+    ("💬 相談",           "相談"),
+    ("🎁 友達に紹介",     "友達に紹介"),
 ]
 
 # ── リッチメッセージ ヘルパー ──────────────────────────
@@ -327,16 +332,25 @@ def handle_registration(user_id: str, message: str) -> TemplateSendMessage | Tex
 
 
 def _save_user(user_id: str, state: dict) -> None:
+    # 既存の referral_code を保持する（再登録時に上書きしない）
+    existing = get_supabase().table("users").select("referral_code").eq("line_user_id", user_id).execute()
+    if existing.data and existing.data[0].get("referral_code"):
+        referral_code = existing.data[0]["referral_code"]
+    else:
+        referral_code = _generate_referral_code()
+
     get_supabase().table("users").upsert(
         {
             "line_user_id": user_id,
             "name": state["name"],
             "region": state["region"],
             "birthdate": state["birthdate"],
+            "referral_code": referral_code,
         },
         on_conflict="line_user_id",
     ).execute()
     user_cache.pop(user_id, None)  # 登録完了時にキャッシュを無効化
+    _apply_rich_menu(user_id, is_paid=False)  # 無料メニューを適用
 
 
 def _save_message(user_id: str, role: str, content: str) -> None:
@@ -439,6 +453,160 @@ def _search_restaurants(message: str) -> str:
     return "\n".join(lines)
 
 
+def _generate_referral_code() -> str:
+    """衝突チェック付きで6文字の紹介コードを生成する。"""
+    for _ in range(10):
+        code = secrets.token_hex(3).upper()
+        result = get_supabase().table("users").select("id").eq("referral_code", code).execute()
+        if not result.data:
+            return code
+    return secrets.token_hex(4).upper()  # 万一衝突が続いたら8文字で返す
+
+
+def _apply_rich_menu(user_id: str, is_paid: bool) -> None:
+    """is_paid フラグに応じてユーザーにリッチメニューを適用する。"""
+    menu_id = RICH_MENU_PAID_ID if is_paid else RICH_MENU_FREE_ID
+    if not menu_id:
+        return
+    try:
+        line_bot_api.link_rich_menu_to_user(user_id, menu_id)
+    except Exception as e:
+        logging.error("rich menu link error: %s", e)
+
+
+def _get_referral_code(user_id: str) -> str:
+    """ユーザーの紹介コードをDBから取得する。"""
+    try:
+        r = get_supabase().table("users").select("referral_code").eq("line_user_id", user_id).execute()
+        return r.data[0].get("referral_code") or "（未設定）" if r.data else "（未設定）"
+    except Exception:
+        return "（取得失敗）"
+
+
+def _check_and_increment_usage(user_id: str) -> bool:
+    """利用回数をチェックし、消費可能なら True を返す。
+    is_paid=True の場合は無制限。bonus_count → daily_count の順で消費する。
+    """
+    try:
+        result = get_supabase().table("users").select(
+            "is_paid, daily_count, bonus_count, last_used_date"
+        ).eq("line_user_id", user_id).execute()
+        if not result.data:
+            return True  # DBエラー時は通す
+
+        row = result.data[0]
+        is_paid = row.get("is_paid") or False
+        if is_paid:
+            return True
+
+        today = date.today().isoformat()
+        last_used = row.get("last_used_date")
+        daily_count = row.get("daily_count") or 0
+        bonus_count = row.get("bonus_count") or 0
+
+        # 日付が変わっていれば daily_count をリセット
+        if last_used != today:
+            daily_count = 0
+
+        # bonus_count を優先して消費
+        if bonus_count > 0:
+            get_supabase().table("users").update({
+                "bonus_count": bonus_count - 1,
+                "last_used_date": today,
+            }).eq("line_user_id", user_id).execute()
+            return True
+
+        # 無料回数チェック
+        if daily_count < FREE_DAILY_LIMIT:
+            get_supabase().table("users").update({
+                "daily_count": daily_count + 1,
+                "last_used_date": today,
+            }).eq("line_user_id", user_id).execute()
+            return True
+
+        return False
+    except Exception as e:
+        logging.error("usage check error: %s", e)
+        return True  # エラー時は通す
+
+
+def _handle_referral_input(user_id: str, code: str) -> str:
+    """紹介コードを受け取り、双方に bonus_count +5 を付与する。"""
+    try:
+        me = get_supabase().table("users").select(
+            "name, referral_code, referred_by, bonus_count"
+        ).eq("line_user_id", user_id).execute()
+        if not me.data:
+            return "ユーザー情報が見つかりませんでした。"
+
+        my_data = me.data[0]
+
+        if my_data.get("referred_by"):
+            return "すでに紹介コードを登録済みです。"
+
+        if (my_data.get("referral_code") or "").upper() == code.upper():
+            return "自分の紹介コードは使えません。"
+
+        referrer = get_supabase().table("users").select(
+            "line_user_id, name, bonus_count"
+        ).eq("referral_code", code.upper()).execute()
+
+        if not referrer.data:
+            return "紹介コードが見つかりませんでした。\nもう一度確認してください。"
+
+        referrer_data = referrer.data[0]
+
+        # 自分の referred_by を保存し、bonus_count +5
+        get_supabase().table("users").update({
+            "referred_by": code.upper(),
+            "bonus_count": (my_data.get("bonus_count") or 0) + 5,
+        }).eq("line_user_id", user_id).execute()
+
+        # 紹介者の bonus_count +5
+        get_supabase().table("users").update({
+            "bonus_count": (referrer_data.get("bonus_count") or 0) + 5,
+        }).eq("line_user_id", referrer_data["line_user_id"]).execute()
+
+        user_cache.pop(user_id, None)
+
+        my_name = my_data.get("name") or "あなた"
+        referrer_name = referrer_data.get("name") or "紹介者"
+        return (
+            f"紹介コードを登録しました！\n\n"
+            f"{referrer_name}さんの紹介ありがとうございます。\n"
+            f"{my_name}さんと{referrer_name}さんに、\n"
+            f"それぞれ5回分の追加利用回数をプレゼントしました。"
+        )
+    except Exception as e:
+        logging.error("referral error: %s", e)
+        return "申し訳ありません。\nしばらくしてからもう一度お試しください。"
+
+
+def _search_faq(message: str) -> str:
+    """FAQ テーブルをキーワード検索し、コンテキスト文字列を返す。"""
+    # ジャンルキーワードを先に確認し、なければメッセージ冒頭で検索
+    genre_keywords = ["地元情報", "食事", "レシピ", "健康", "運動", "相談"]
+    matched_keyword = next((kw for kw in genre_keywords if kw in message), None)
+    search_term = matched_keyword or message[:15]
+
+    try:
+        r = get_supabase().table("faq").select("question, answer").or_(
+            f"question.ilike.%{search_term}%,genre.ilike.%{search_term}%"
+        ).limit(3).execute()
+
+        if not r.data:
+            return ""
+
+        lines = ["【よくある質問・地域情報】"]
+        for item in r.data:
+            lines.append(f"Q: {item['question']}")
+            lines.append(f"A: {item['answer']}")
+        return "\n".join(lines)
+    except Exception as e:
+        logging.error("FAQ search error: %s", e)
+        return ""
+
+
 def _load_history(user_id: str) -> list[dict]:
     """Supabaseから会話履歴を復元する。"""
     try:
@@ -482,6 +650,11 @@ def get_claude_reply(user_id: str, user_message: str, user_info: dict | None = N
         restaurant_context = _search_restaurants(user_message)
         if restaurant_context:
             system += f"\n\n{restaurant_context}\n上記の情報を参考にして答えてください。"
+
+    # FAQ RAG: 全ユーザー対象
+    faq_context = _search_faq(user_message)
+    if faq_context:
+        system += f"\n\n{faq_context}\n上記のFAQ情報を参考にして答えてください。"
 
     try:
         response = anthropic_client.messages.create(
@@ -574,8 +747,75 @@ def handle_message(event):
         )
         return
 
-    # 登録済みユーザーへの Claude 返答：Web 検索で 30 秒超えることがあるため
-    # バックグラウンドスレッドで処理し、reply_token 失効後も届く push_message で送信
+    # 「友達に紹介」キーワード：紹介コードを案内（Claudeを呼ばない）
+    if user_message.strip() == "友達に紹介":
+        referral_code = _get_referral_code(user_id)
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    f"紹介コードをお友達に教えてください！\n\n"
+                    f"あなたの紹介コード：{referral_code}\n\n"
+                    f"お友達が「紹介コード：{referral_code}」と送ると、\n"
+                    f"お互いに5回分の追加利用回数がもらえます。"
+                ),
+                quick_reply=_build_quick_reply(_MENU_QR_ITEMS),
+            ),
+        )
+        return
+
+    # 「紹介コード：XXXXXX」パターン：紹介コードを登録
+    referral_match = re.match(r'紹介コード[：:]\s*([A-Fa-f0-9]{6,8})', user_message.strip())
+    if referral_match:
+        code = referral_match.group(1).upper()
+        reply_text = _handle_referral_input(user_id, code)
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=reply_text,
+                quick_reply=_build_quick_reply(_MENU_QR_ITEMS),
+            ),
+        )
+        return
+
+    # 「AIに直接相談」：有料会員チェック（フリーユーザーにはアップセル案内）
+    if user_message.strip() == "AIに直接相談":
+        try:
+            paid_result = get_supabase().table("users").select("is_paid").eq("line_user_id", user_id).execute()
+            is_paid = paid_result.data[0].get("is_paid") if paid_result.data else False
+        except Exception:
+            is_paid = False
+        if not is_paid:
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(
+                    text=(
+                        "AIに直接相談は有料会員向けのサービスです。\n\n"
+                        "詳しくはスタッフにお問い合わせください。"
+                    ),
+                    quick_reply=_build_quick_reply(_MENU_QR_ITEMS),
+                ),
+            )
+            return
+        # 有料会員の場合はそのままClaude処理へ進む
+
+    # 利用回数チェック（is_paid なら通過、bonus_count → daily_count の順で消費）
+    if not _check_and_increment_usage(user_id):
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    f"{user_info['name']}さん、本日の無料利用回数（{FREE_DAILY_LIMIT}回）を使い切りました。\n\n"
+                    "明日またお話しましょう。\n"
+                    "お友達を紹介すると、追加で5回使えるようになります！"
+                ),
+                quick_reply=_build_quick_reply([("🎁 友達に紹介", "友達に紹介")]),
+            ),
+        )
+        return
+
+    # 登録済みユーザーへの Claude 返答：バックグラウンドスレッドで処理し、
+    # reply_token 失効後も届く push_message で送信
     def _process(uid: str, msg: str, uinfo: dict) -> None:
         reply_text = "申し訳ありません。\nただいま少し調子が悪いようです。\nしばらくしてからもう一度お試しください。"
         try:
