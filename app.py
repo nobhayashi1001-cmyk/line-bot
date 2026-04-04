@@ -475,11 +475,18 @@ def _apply_rich_menu(user_id: str, is_paid: bool) -> None:
 
 
 def _get_referral_code(user_id: str) -> str:
-    """ユーザーの紹介コードをDBから取得する。"""
+    """ユーザーの紹介コードをDBから取得する。未設定なら新規発行して保存する。"""
     try:
         r = get_supabase().table("users").select("referral_code").eq("line_user_id", user_id).execute()
-        return r.data[0].get("referral_code") or "（未設定）" if r.data else "（未設定）"
-    except Exception:
+        if not r.data:
+            return "（取得失敗）"
+        code = r.data[0].get("referral_code")
+        if not code:
+            code = _generate_referral_code()
+            get_supabase().table("users").update({"referral_code": code}).eq("line_user_id", user_id).execute()
+        return code
+    except Exception as e:
+        logging.error("get_referral_code error: %s", e)
         return "（取得失敗）"
 
 
