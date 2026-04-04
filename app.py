@@ -754,10 +754,10 @@ def handle_message(event):
             event.reply_token,
             TextSendMessage(
                 text=(
-                    f"紹介コードをお友達に教えてください！\n\n"
+                    f"お友達にこのコードを教えてください！\n\n"
                     f"あなたの紹介コード：{referral_code}\n\n"
-                    f"お友達が「紹介コード：{referral_code}」と送ると、\n"
-                    f"お互いに5回分の追加利用回数がもらえます。"
+                    f"お友達が登録時にコードを入力すると、\n"
+                    f"あなたに5回・お友達に5回プレゼント🎁"
                 ),
                 quick_reply=_build_quick_reply(_MENU_QR_ITEMS),
             ),
@@ -805,9 +805,8 @@ def handle_message(event):
             event.reply_token,
             TextSendMessage(
                 text=(
-                    f"{user_info['name']}さん、本日の無料利用回数（{FREE_DAILY_LIMIT}回）を使い切りました。\n\n"
-                    "明日またお話しましょう。\n"
-                    "お友達を紹介すると、追加で5回使えるようになります！"
+                    f"本日の無料回数（{FREE_DAILY_LIMIT}回）を使い切りました😔\n"
+                    "友達を紹介すると5回追加されます🎁"
                 ),
                 quick_reply=_build_quick_reply([("🎁 友達に紹介", "友達に紹介")]),
             ),
