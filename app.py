@@ -142,6 +142,12 @@ TOTAL_REPLY_TIMEOUT = 28  # 返答全体のハードタイムアウト（秒）
 FREE_DAILY_LIMIT    = 5   # 無料会員の1日あたり利用回数上限
 
 
+# 都道府県・市区町村マスタ（順次拡大予定）
+_PREFECTURES = ["神奈川県"]
+_CITIES: dict[str, list[str]] = {
+    "神奈川県": ["藤沢市", "鎌倉市", "茅ヶ崎市", "逗子市", "葉山町", "大和市", "横浜市", "川崎市", "相模原市"],
+}
+
 _MENU_QR_ITEMS = [
     ("📰 地元情報",       "地元情報"),
     ("🍽️ 食事・レシピ",   "食事・レシピ"),
@@ -221,34 +227,13 @@ def _build_menu_message(name: str) -> TemplateSendMessage:
     )
 
 
-def _build_registration_confirm(state: dict) -> TemplateSendMessage:
-    """登録内容の確認テンプレートを返す。"""
-    return TemplateSendMessage(
-        alt_text="登録内容の確認",
-        template=ConfirmTemplate(
-            text=(
-                f"確認します。\n"
-                f"お名前：{state['name']}さん\n"
-                f"地域：{state['region']}\n"
-                f"生年月日：{state['birthdate']}\n"
-                "この内容でよろしいですか？"
-            ),
-            actions=[
-                MessageAction(label="はい、登録します",  text="はい"),
-                MessageAction(label="最初からやり直す",  text="やり直す"),
-            ],
-        ),
-    )
-
-
-def _build_welcome_message(name: str) -> TextSendMessage:
+def _build_welcome_message(extra_msg: str = "") -> TextSendMessage:
     """登録完了後のウェルカムメッセージをQuickReply付きテキストで返す。"""
+    body = "ご登録ありがとうございました！\n\nさっそく下のボタンをタップして使ってみてください。"
+    if extra_msg:
+        body = extra_msg + "\n\n" + body
     return TextSendMessage(
-        text=(
-            f"ご登録ありがとうございました。\n"
-            f"{name}さん、これからよろしくお願いします。\n\n"
-            "下のボタンをタップして、さっそく使ってみてください。"
-        ),
+        text=body,
         quick_reply=_build_quick_reply(_MENU_QR_ITEMS),
     )
 
@@ -283,50 +268,70 @@ def _build_restaurant_carousel(restaurants: list[dict]) -> TemplateSendMessage:
 # ── 登録フロー ─────────────────────────────────────────
 
 def start_registration(user_id: str) -> TextSendMessage:
-    registration_states[user_id] = {"step": "awaiting_name"}
-    return TextSendMessage(text=(
-        "はじめまして。\n"
-        "ご利用にあたって、簡単なご登録をお願いします。\n\n"
-        "まず、お名前を教えていただけますか？"
-    ))
+    registration_states[user_id] = {"step": "awaiting_prefecture"}
+    return TextSendMessage(
+        text="ようこそ！\nまず住んでいる都道府県を選択してください。",
+        quick_reply=_build_quick_reply([(p, p) for p in _PREFECTURES]),
+    )
 
 
 def handle_registration(user_id: str, message: str) -> TemplateSendMessage | TextSendMessage:
     state = registration_states[user_id]
     step = state["step"]
 
-    if step == "awaiting_name":
-        state["name"] = message.strip()
-        state["step"] = "awaiting_region"
-        return TextSendMessage(text=(
-            f"{state['name']}さん、ありがとうございます。\n\n"
-            "お住まいの市区町村を教えていただけますか？\n"
-            "（例：藤沢市、横浜市港北区、大阪市天王寺区）"
-        ))
+    if step == "awaiting_prefecture":
+        pref = message.strip()
+        if pref not in _PREFECTURES:
+            return TextSendMessage(
+                text="下のボタンから都道府県を選択してください。",
+                quick_reply=_build_quick_reply([(p, p) for p in _PREFECTURES]),
+            )
+        state["prefecture"] = pref
+        state["step"] = "awaiting_city"
+        cities = _CITIES.get(pref, [])
+        return TextSendMessage(
+            text=f"{pref}を選択しました。\n次に市区町村を選択してください。",
+            quick_reply=_build_quick_reply([(c, c) for c in cities]),
+        )
 
-    if step == "awaiting_region":
-        state["region"] = message.strip()
+    if step == "awaiting_city":
+        state["city"] = message.strip()
         state["step"] = "awaiting_birthdate"
         return TextSendMessage(text=(
             "ありがとうございます。\n\n"
-            "最後に、生年月日を教えていただけますか？\n"
-            "（例：1950年1月15日）"
+            "生年月日を入力してください。\n"
+            "（例：1950年1月1日）"
         ))
 
     if step == "awaiting_birthdate":
         state["birthdate"] = message.strip()
-        state["step"] = "awaiting_confirmation"
-        return _build_registration_confirm(state)
+        state["step"] = "awaiting_referral_confirm"
+        return TemplateSendMessage(
+            alt_text="紹介コードをお持ちですか？",
+            template=ConfirmTemplate(
+                text="紹介コードをお持ちですか？",
+                actions=[
+                    MessageAction(label="はい", text="はい"),
+                    MessageAction(label="いいえ", text="いいえ"),
+                ],
+            ),
+        )
 
-    if step == "awaiting_confirmation":
+    if step == "awaiting_referral_confirm":
         if message.strip() == "はい":
-            _save_user(user_id, state)
-            name = state["name"]
-            del registration_states[user_id]
-            return _build_welcome_message(name)
+            state["step"] = "awaiting_referral_code"
+            return TextSendMessage(text="紹介コードを入力してください。")
         else:
-            registration_states[user_id] = {"step": "awaiting_name"}
-            return TextSendMessage(text="わかりました。最初からやり直しましょう。\nお名前を教えてください。")
+            _save_user(user_id, state)
+            del registration_states[user_id]
+            return _build_welcome_message()
+
+    if step == "awaiting_referral_code":
+        code = message.strip().upper()
+        _save_user(user_id, state)
+        referral_msg = _handle_referral_input(user_id, code)
+        del registration_states[user_id]
+        return _build_welcome_message(referral_msg)
 
     return TextSendMessage(text="少々お待ちください。")
 
@@ -339,12 +344,15 @@ def _save_user(user_id: str, state: dict) -> None:
     else:
         referral_code = _generate_referral_code()
 
+    # prefecture + city を region として保存（例: 神奈川県藤沢市）
+    region = state.get("prefecture", "") + state.get("city", state.get("region", ""))
+
     get_supabase().table("users").upsert(
         {
             "line_user_id": user_id,
-            "name": state["name"],
-            "region": state["region"],
-            "birthdate": state["birthdate"],
+            "name": state.get("name"),  # name は任意
+            "region": region,
+            "birthdate": state.get("birthdate"),
             "referral_code": referral_code,
         },
         on_conflict="line_user_id",
@@ -645,9 +653,11 @@ def get_claude_reply(user_id: str, user_message: str, user_info: dict | None = N
     # ユーザー情報をシステムプロンプトに動的に注入
     system = SYSTEM_PROMPT
     if user_info:
+        _name = user_info.get("name")
+        name_line = f"\n・お名前：{_name}（必ず「{_name}さん」と呼びかけてください）" if _name else ""
         system += (
             f"\n\n【このユーザーの情報】"
-            f"\n・お名前：{user_info['name']}（必ず「{user_info['name']}さん」と呼びかけてください）"
+            f"{name_line}"
             f"\n・お住まいの地域：{user_info['region']}"
         )
 
@@ -710,7 +720,9 @@ def handle_follow(event):
 
     user = _get_user(user_id)
     if user:
-        reply = TextSendMessage(text=f"またお会いできてうれしいです、{user['name']}さん。\n何でもお気軽にどうぞ。")
+        name = user.get("name")
+        greeting = f"またお会いできてうれしいです、{name}さん。\n何でもお気軽にどうぞ。" if name else "またお会いできてうれしいです。\n何でもお気軽にどうぞ。"
+        reply = TextSendMessage(text=greeting)
     else:
         reply = start_registration(user_id)
 
@@ -748,7 +760,7 @@ def handle_message(event):
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(
-                text=f"{user_info['name']}さん、何でもどうぞ。\n下のボタンをタップしてください。",
+                text="何でもどうぞ。\n下のボタンをタップしてください。",
                 quick_reply=_build_quick_reply(_MENU_QR_ITEMS),
             ),
         )
@@ -761,10 +773,15 @@ def handle_message(event):
             event.reply_token,
             TextSendMessage(
                 text=(
-                    f"お友達にこのコードを教えてください！\n\n"
-                    f"あなたの紹介コード：{referral_code}\n\n"
-                    f"お友達が登録時にコードを入力すると、\n"
-                    f"あなたに5回・お友達に5回プレゼント🎁"
+                    "お友達にこのメッセージをそのまま送ってください！\n\n"
+                    "━━━━━━━━━━━━\n"
+                    "🏘️ 地元くらしの御用聞き\n"
+                    "藤沢市の生活をAIがサポートします！\n\n"
+                    "▼ 友達追加はこちら\n"
+                    "https://line.me/R/ti/p/@135dsiqh\n\n"
+                    f"紹介コード：{referral_code}\n"
+                    "（登録時に入力すると2人に5回プレゼント🎁）\n"
+                    "━━━━━━━━━━━━"
                 ),
                 quick_reply=_build_quick_reply(_MENU_QR_ITEMS),
             ),
@@ -871,7 +888,7 @@ def handle_message(event):
     try:
         line_bot_api.reply_message(
             event.reply_token,
-            TextSendMessage(text=f"{user_info['name']}さん、少しお待ちください。\n確認してみますね。"),
+            TextSendMessage(text="少しお待ちください。\n確認してみますね。"),
         )
     except Exception as e:
         logging.error("wait message error: %s", e)
