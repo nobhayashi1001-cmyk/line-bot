@@ -597,42 +597,88 @@ def _handle_referral_input(user_id: str, code: str) -> str:
         return "申し訳ありません。\nしばらくしてからもう一度お試しください。"
 
 
+# メッセージキーワード → FAQジャンル のマッピング
+_FAQ_GENRE_MAP: dict[str, str] = {
+    "健康":       "健康",
+    "病院":       "健康",
+    "薬":         "健康",
+    "医者":       "健康",
+    "診察":       "健康",
+    "症状":       "健康",
+    "血圧":       "健康",
+    "糖尿":       "健康",
+    "骨":         "健康",
+    "食事":       "食事・レシピ",
+    "レシピ":     "食事・レシピ",
+    "料理":       "食事・レシピ",
+    "栄養":       "食事・レシピ",
+    "食べ":       "食事・レシピ",
+    "ごはん":     "食事・レシピ",
+    "地元情報":   "地元情報",
+    "ごみ":       "地元情報",
+    "ゴミ":       "地元情報",
+    "行政":       "地元情報",
+    "手続き":     "地元情報",
+    "役所":       "地元情報",
+    "バス":       "地元情報",
+    "スマホ":     "スマホ相談",
+    "携帯":       "スマホ相談",
+    "LINE":       "スマホ相談",
+    "ライン":     "スマホ相談",
+    "アプリ":     "スマホ相談",
+    "インターネット": "スマホ相談",
+    "詐欺":       "スマホ相談",
+    "運動":       "運動",
+    "体操":       "運動",
+    "歩く":       "運動",
+    "ウォーキング": "運動",
+}
+
+
+def _detect_faq_genre(message: str) -> str | None:
+    """メッセージからFAQジャンルを推定する。"""
+    return next((v for k, v in _FAQ_GENRE_MAP.items() if k in message), None)
+
+
 def _search_faq(message: str) -> str:
-    """FAQ テーブルをジャンル優先・フリーワード補完で検索し、Claudeコンテキスト文字列を返す。"""
-    # リッチメニューのジャンルキーワードをメッセージから検出
-    _GENRE_MAP = {
-        "地元情報": "地元情報",
-        "食事":     "食事・レシピ",
-        "レシピ":   "食事・レシピ",
-        "食事・レシピ": "食事・レシピ",
-        "健康":     "健康",
-        "運動":     "運動",
-        "相談":     "相談",
-        "ごみ":     "地元情報",
-        "ゴミ":     "地元情報",
-        "行政":     "地元情報",
-    }
+    """FAQ テーブルをキーワード検索し、text タイプのみ Claude コンテキストとして返す。
 
-    genre = next((v for k, v in _GENRE_MAP.items() if k in message), None)
-
+    検索優先順位:
+    1. メッセージ中の単語で question を部分一致検索
+    2. ヒットなし → ジャンル検索にフォールバック
+    """
     try:
-        if genre:
-            # ジャンル完全一致で取得（最大3件）
-            r = get_supabase().table("faq").select("question, answer").eq(
-                "genre", genre
-            ).limit(3).execute()
-        else:
-            # フリーワード検索：question と genre の両方にかける
-            term = message[:20]
-            r = get_supabase().table("faq").select("question, answer").or_(
-                f"question.ilike.%{term}%,genre.ilike.%{term}%"
-            ).limit(3).execute()
+        # 2文字以上の単語を最大5語抽出してquestion検索
+        words = [w for w in re.split(r'[　\s。、？！ー・]+', message) if len(w) >= 2][:5]
 
-        if not r.data:
+        results: list[dict] = []
+        seen_q: set[str] = set()
+
+        for word in words:
+            r = get_supabase().table("faq").select(
+                "question, answer, answer_type"
+            ).ilike("question", f"%{word}%").limit(3).execute()
+            for row in (r.data or []):
+                if row["question"] not in seen_q:
+                    seen_q.add(row["question"])
+                    results.append(row)
+
+        # キーワード検索でヒットしない場合はジャンルで補完
+        if not results:
+            genre = _detect_faq_genre(message)
+            if genre:
+                r = get_supabase().table("faq").select(
+                    "question, answer, answer_type"
+                ).eq("genre", genre).limit(3).execute()
+                results = r.data or []
+
+        # text タイプのみ Claude コンテキストに使う（button/carousel は直接返信で処理）
+        text_items = [x for x in results if x.get("answer_type", "text") == "text"][:3]
+        if not text_items:
             return ""
 
         lines = ["【参考情報】"]
-        for item in r.data:
+        for item in text_items:
             lines.append(f"Q: {item['question']}")
             lines.append(f"A: {item['answer']}")
             lines.append("")
@@ -640,6 +686,71 @@ def _search_faq(message: str) -> str:
     except Exception as e:
         logging.error("FAQ search error: %s", e)
         return ""
+
+
+def _faq_direct_reply(message: str) -> TextSendMessage | TemplateSendMessage | None:
+    """FAQ を検索し、answer_type が button/carousel なら LINE メッセージを返す。
+    text タイプまたは未ヒットの場合は None を返す（Claude 経由で処理）。
+    """
+    try:
+        words = [w for w in re.split(r'[　\s。、？！ー・]+', message) if len(w) >= 2][:5]
+
+        rows: list[dict] = []
+        seen_q: set[str] = set()
+
+        for word in words:
+            r = get_supabase().table("faq").select(
+                "question, answer, answer_type, options"
+            ).ilike("question", f"%{word}%").limit(3).execute()
+            for row in (r.data or []):
+                if row["question"] not in seen_q:
+                    seen_q.add(row["question"])
+                    rows.append(row)
+
+        for row in rows:
+            atype = row.get("answer_type", "text")
+
+            if atype == "button":
+                opts = row.get("options") or []
+                actions = [
+                    MessageAction(label=o["label"][:20], text=o["text"][:300])
+                    for o in opts[:4]
+                ]
+                if not actions:
+                    continue
+                return TemplateSendMessage(
+                    alt_text=row["answer"][:100],
+                    template=ButtonsTemplate(
+                        text=row["answer"][:160],
+                        actions=actions,
+                    ),
+                )
+
+            if atype == "carousel":
+                opts = row.get("options") or []
+                columns = []
+                for o in opts[:10]:
+                    col_actions = [
+                        MessageAction(label=a["label"][:20], text=a["text"][:300])
+                        for a in (o.get("actions") or [])[:3]
+                    ]
+                    if not col_actions:
+                        col_actions = [MessageAction(label="詳しく聞く", text=o.get("title", ""))]
+                    columns.append(CarouselColumn(
+                        title=(o.get("title") or "")[:40],
+                        text=(o.get("text") or "詳細情報")[:60],
+                        actions=col_actions,
+                    ))
+                if columns:
+                    return TemplateSendMessage(
+                        alt_text=row["answer"][:100],
+                        template=CarouselTemplate(columns=columns),
+                    )
+
+        return None
+    except Exception as e:
+        logging.error("faq direct reply error: %s", e)
+        return None
 
 
 def _load_history(user_id: str) -> list[dict]:
@@ -867,6 +978,21 @@ def handle_message(event):
             except Exception as e:
                 logging.error("limit message send error: %s", e)
         return
+
+    # FAQ直接返信チェック（button/carousel タイプはClaudeを呼ばず即時返信）
+    try:
+        faq_msg = _faq_direct_reply(user_message)
+        if faq_msg is not None:
+            line_bot_api.reply_message(
+                event.reply_token,
+                [faq_msg, TextSendMessage(
+                    text="他にも何かありますか？",
+                    quick_reply=_build_quick_reply(_MENU_QR_ITEMS),
+                )],
+            )
+            return
+    except Exception as e:
+        logging.error("faq direct reply check error: %s", e)
 
     # 登録済みユーザーへの Claude 返答：バックグラウンドスレッドで処理し、
     # reply_token 失効後も届く push_message で送信
