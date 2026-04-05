@@ -598,25 +598,45 @@ def _handle_referral_input(user_id: str, code: str) -> str:
 
 
 def _search_faq(message: str) -> str:
-    """FAQ テーブルをキーワード検索し、コンテキスト文字列を返す。"""
-    # ジャンルキーワードを先に確認し、なければメッセージ冒頭で検索
-    genre_keywords = ["地元情報", "食事", "レシピ", "健康", "運動", "相談"]
-    matched_keyword = next((kw for kw in genre_keywords if kw in message), None)
-    search_term = matched_keyword or message[:15]
+    """FAQ テーブルをジャンル優先・フリーワード補完で検索し、Claudeコンテキスト文字列を返す。"""
+    # リッチメニューのジャンルキーワードをメッセージから検出
+    _GENRE_MAP = {
+        "地元情報": "地元情報",
+        "食事":     "食事・レシピ",
+        "レシピ":   "食事・レシピ",
+        "食事・レシピ": "食事・レシピ",
+        "健康":     "健康",
+        "運動":     "運動",
+        "相談":     "相談",
+        "ごみ":     "地元情報",
+        "ゴミ":     "地元情報",
+        "行政":     "地元情報",
+    }
+
+    genre = next((v for k, v in _GENRE_MAP.items() if k in message), None)
 
     try:
-        r = get_supabase().table("faq").select("question, answer").or_(
-            f"question.ilike.%{search_term}%,genre.ilike.%{search_term}%"
-        ).limit(3).execute()
+        if genre:
+            # ジャンル完全一致で取得（最大3件）
+            r = get_supabase().table("faq").select("question, answer").eq(
+                "genre", genre
+            ).limit(3).execute()
+        else:
+            # フリーワード検索：question と genre の両方にかける
+            term = message[:20]
+            r = get_supabase().table("faq").select("question, answer").or_(
+                f"question.ilike.%{term}%,genre.ilike.%{term}%"
+            ).limit(3).execute()
 
         if not r.data:
             return ""
 
-        lines = ["【よくある質問・地域情報】"]
+        lines = ["【参考情報】"]
         for item in r.data:
             lines.append(f"Q: {item['question']}")
             lines.append(f"A: {item['answer']}")
-        return "\n".join(lines)
+            lines.append("")
+        return "\n".join(lines).rstrip()
     except Exception as e:
         logging.error("FAQ search error: %s", e)
         return ""
