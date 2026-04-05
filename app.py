@@ -808,16 +808,27 @@ def handle_message(event):
 
     # 利用回数チェック（is_paid なら通過、bonus_count → daily_count の順で消費）
     if not _check_and_increment_usage(user_id):
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(
-                text=(
-                    f"本日の無料回数（{FREE_DAILY_LIMIT}回）を使い切りました😔\n"
-                    "友達を紹介すると5回追加されます🎁"
-                ),
-                quick_reply=_build_quick_reply([("🎁 友達に紹介", "友達に紹介")]),
-            ),
+        _LIMIT_TEXT = (
+            f"本日の無料回数（{FREE_DAILY_LIMIT}回）を使い切りました😔\n\n"
+            "明日またお使いいただけます。\n"
+            "お友達を紹介すると、5回追加でプレゼント🎁\n\n"
+            "「友達に紹介」ボタンから紹介コードを確認できます！"
         )
+        _LIMIT_QR = _build_quick_reply([("友達に紹介", "友達に紹介")])
+        # reply_token で即返信し、失敗した場合は push_message で確実に届ける
+        try:
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(text=_LIMIT_TEXT, quick_reply=_LIMIT_QR),
+            )
+        except Exception:
+            try:
+                line_bot_api.push_message(
+                    user_id,
+                    TextSendMessage(text=_LIMIT_TEXT, quick_reply=_LIMIT_QR),
+                )
+            except Exception as e:
+                logging.error("limit message send error: %s", e)
         return
 
     # 登録済みユーザーへの Claude 返答：バックグラウンドスレッドで処理し、
