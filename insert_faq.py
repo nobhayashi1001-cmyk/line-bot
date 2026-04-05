@@ -14,6 +14,7 @@ FAQ データを Supabase に投入するスクリプト
 import argparse
 import os
 import sys
+from typing import Optional
 
 from supabase import create_client
 
@@ -1032,7 +1033,7 @@ def get_by_genre(genre: str) -> list[dict]:
 
 
 # ── 投入処理 ──────────────────────────────────────────────────────────
-def clear_faq(genre: str | None = None) -> None:
+def clear_faq(genre: Optional[str] = None) -> None:
     """指定ジャンル（Noneなら全件）をfaqテーブルから削除する。"""
     if genre:
         supabase.table("faq").delete().eq("genre", genre).execute()
