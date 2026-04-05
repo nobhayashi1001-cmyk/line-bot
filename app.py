@@ -20,6 +20,7 @@ from linebot.models import (
     CarouselTemplate, CarouselColumn, MessageAction, URIAction,
     QuickReply, QuickReplyButton,
 )
+import httpx
 import anthropic
 from supabase import create_client
 
@@ -43,6 +44,81 @@ RICH_MENU_PAID_ID = os.environ.get("RICH_MENU_PAID_ID", "")
 
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
+
+
+def _mark_as_read(token: str) -> None:
+    """
+    受信したメッセージを既読にする（チャットモード対応版）。
+
+    【なぜ修正が必要だったか】
+    LINE の管理画面で「チャット」機能をオンにしている場合、
+    自動では既読がつきません。
+    以前は /v2/bot/message/markAsRead（古いエンドポイント）を使っていましたが、
+    チャットモードでは /v2/bot/chat/markAsRead を使う必要があります。
+
+    【markAsReadToken とは】
+    LINE がウェブフックを送ってくるとき、メッセージの情報の中に
+    "markAsReadToken"（既読用のワンタイムトークン）が含まれています。
+    このトークンを API に渡すことで、そのメッセージを既読にできます。
+
+    【引数】
+    token : event.delivery_context.mark_as_read_token から取り出したトークン。
+            トークンがない（None や空文字）場合は何もせず終了します。
+    """
+    # トークンがない場合はスキップ（エラーにしない）
+    if not token:
+        return
+    try:
+        httpx.post(
+            # チャットモード対応の新しいエンドポイント
+            "https://api.line.me/v2/bot/chat/markAsRead",
+            # チャネルアクセストークンで認証する
+            headers={"Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"},
+            # markAsReadToken : webhook から取り出したワンタイムトークンを渡す
+            json={"markAsReadToken": token},
+            timeout=5,
+        )
+    except Exception as e:
+        logging.error("mark as read error: %s", e)
+
+
+def _start_loading(user_id: str) -> None:
+    """
+    ユーザーのトーク画面に「入力中アニメーション（...）」を表示する。
+
+    【何をしているか】
+    LINE の Loading Animation API に HTTP リクエストを送ることで、
+    ボットが「考えている」ことをユーザーに視覚的に伝えます。
+    スマホで友達に LINE を送ったとき「...」が出るのと同じ演出です。
+
+    【引数】
+    user_id : メッセージを送ってきたユーザーの ID（event.source.user_id）
+
+    【loadingSeconds について】
+    最大 60 秒まで指定できます。ここでは 10 秒に設定しています。
+    reply_message が実行されると自動でアニメーションは消えるため、
+    実際には 10 秒を待たずに消えます。
+
+    【エラー処理について】
+    API が失敗してもアニメーションが出ないだけで、返答自体には影響しません。
+    そのため例外はログに記録するだけにしています。
+    """
+    try:
+        httpx.post(
+            # LINE の Loading Animation 専用エンドポイント
+            "https://api.line.me/v2/bot/chat/loading/start",
+            # チャネルアクセストークンで認証する
+            headers={"Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"},
+            # chatId : 誰のトーク画面に表示するか（送信者のユーザーID）
+            # loadingSeconds : アニメーションを表示する最大秒数（5〜60 の整数）
+            json={"chatId": user_id, "loadingSeconds": 10},
+            # ネットワーク遅延でメッセージ処理全体が止まらないよう 5 秒で打ち切る
+            timeout=5,
+        )
+    except Exception as e:
+        logging.error("loading animation error: %s", e)
+
+
 anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 _supabase = None
@@ -699,9 +775,12 @@ def _faq_direct_reply(message: str) -> TextSendMessage | TemplateSendMessage | N
         seen_q: set[str] = set()
 
         for word in words:
+            # button/carousel タイプを優先して取得（text タイプが limit を埋めるのを防ぐ）
             r = get_supabase().table("faq").select(
                 "question, answer, answer_type, options"
-            ).ilike("question", f"%{word}%").limit(3).execute()
+            ).ilike("question", f"%{word}%").in_(
+                "answer_type", ["button", "carousel"]
+            ).limit(3).execute()
             for row in (r.data or []):
                 if row["question"] not in seen_q:
                     seen_q.add(row["question"])
@@ -864,6 +943,20 @@ def handle_follow(event):
 def handle_message(event):
     user_id = event.source.user_id
     user_message = event.message.text
+
+    # ── 既読 ＆ 入力中アニメーション ──────────────────────────────
+    # メッセージを受け取ったら、AI が答えを作り始める前に
+    # 「既読」と「入力中アニメーション（...）」を表示する。
+    # どちらも失敗しても返答自体には影響しないので、先頭に置いています。
+
+    # delivery_context は LINE が送ってくる webhook の中に含まれる追加情報。
+    # その中の mark_as_read_token を取り出す。
+    # getattr(..., None) は「属性がなければ None を返す」安全な書き方。
+    mark_as_read_token = getattr(
+        getattr(event, "delivery_context", None), "mark_as_read_token", None
+    )
+    threading.Thread(target=_mark_as_read, args=(mark_as_read_token,), daemon=True).start()  # 既読をつける
+    threading.Thread(target=_start_loading, args=(user_id,), daemon=True).start()            # 「...」アニメーションを表示
 
     # 登録フロー中・未登録は同期処理（Supabase 参照のみで高速）
     try:
