@@ -949,12 +949,9 @@ def handle_message(event):
     # 「既読」と「入力中アニメーション（...）」を表示する。
     # どちらも失敗しても返答自体には影響しないので、先頭に置いています。
 
-    # delivery_context は LINE が送ってくる webhook の中に含まれる追加情報。
-    # その中の mark_as_read_token を取り出す。
+    # markAsReadToken は event.message の中に含まれている。
     # getattr(..., None) は「属性がなければ None を返す」安全な書き方。
-    mark_as_read_token = getattr(
-        getattr(event, "delivery_context", None), "mark_as_read_token", None
-    )
+    mark_as_read_token = getattr(event.message, "mark_as_read_token", None)
     threading.Thread(target=_mark_as_read, args=(mark_as_read_token,), daemon=True).start()  # 既読をつける
     threading.Thread(target=_start_loading, args=(user_id,), daemon=True).start()            # 「...」アニメーションを表示
 
