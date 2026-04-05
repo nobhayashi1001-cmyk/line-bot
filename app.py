@@ -66,20 +66,20 @@ def _mark_as_read(token: str) -> None:
             トークンがない（None や空文字）場合は何もせず終了します。
     """
     # トークンがない場合はスキップ（エラーにしない）
+    logging.error("[markAsRead] token=%r", token)
     if not token:
+        logging.error("[markAsRead] token is empty, skipping")
         return
     try:
-        httpx.post(
-            # チャットモード対応の新しいエンドポイント
+        resp = httpx.post(
             "https://api.line.me/v2/bot/chat/markAsRead",
-            # チャネルアクセストークンで認証する
             headers={"Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"},
-            # markAsReadToken : webhook から取り出したワンタイムトークンを渡す
             json={"markAsReadToken": token},
             timeout=5,
         )
+        logging.error("[markAsRead] status=%d body=%s", resp.status_code, resp.text)
     except Exception as e:
-        logging.error("mark as read error: %s", e)
+        logging.error("[markAsRead] exception: %s", e)
 
 
 def _start_loading(user_id: str) -> None:
@@ -949,9 +949,17 @@ def handle_message(event):
     # 「既読」と「入力中アニメーション（...）」を表示する。
     # どちらも失敗しても返答自体には影響しないので、先頭に置いています。
 
-    # markAsReadToken は event.message の中に含まれている。
-    # getattr(..., None) は「属性がなければ None を返す」安全な書き方。
-    mark_as_read_token = getattr(event.message, "mark_as_read_token", None)
+    # markAsReadToken の取得を複数の方法で試してログに出す
+    token_from_attr = getattr(event.message, "mark_as_read_token", None)
+    try:
+        token_from_dict = event.message.as_json_dict().get("markAsReadToken")
+    except Exception:
+        token_from_dict = None
+    logging.error(
+        "[markAsRead] attr=%r dict=%r event_type=%s",
+        token_from_attr, token_from_dict, type(event.message).__name__
+    )
+    mark_as_read_token = token_from_attr or token_from_dict
     threading.Thread(target=_mark_as_read, args=(mark_as_read_token,), daemon=True).start()  # 既読をつける
     threading.Thread(target=_start_loading, args=(user_id,), daemon=True).start()            # 「...」アニメーションを表示
 
