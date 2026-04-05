@@ -9,7 +9,8 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeou
 from datetime import date
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
-from flask import Flask, request, abort
+import json
+from flask import Flask, request, abort, g
 
 logging.basicConfig(level=logging.ERROR)
 from linebot import LineBotApi, WebhookHandler
@@ -65,21 +66,17 @@ def _mark_as_read(token: str) -> None:
     token : event.delivery_context.mark_as_read_token から取り出したトークン。
             トークンがない（None や空文字）場合は何もせず終了します。
     """
-    # トークンがない場合はスキップ（エラーにしない）
-    logging.error("[markAsRead] token=%r", token)
     if not token:
-        logging.error("[markAsRead] token is empty, skipping")
         return
     try:
-        resp = httpx.post(
+        httpx.post(
             "https://api.line.me/v2/bot/chat/markAsRead",
             headers={"Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"},
             json={"markAsReadToken": token},
             timeout=5,
         )
-        logging.error("[markAsRead] status=%d body=%s", resp.status_code, resp.text)
     except Exception as e:
-        logging.error("[markAsRead] exception: %s", e)
+        logging.error("mark as read error: %s", e)
 
 
 def _start_loading(user_id: str) -> None:
@@ -915,6 +912,18 @@ def callback():
     signature = request.headers.get("X-Line-Signature", "")
     body = request.get_data(as_text=True)
 
+    # 生JSONから message_id → markAsReadToken のマップを作る
+    # SDK は markAsReadToken をパースしないため、ここで直接抽出する
+    g.mark_as_read_tokens = {}
+    try:
+        for ev in json.loads(body).get("events", []):
+            msg_id = ev.get("message", {}).get("id")
+            token  = ev.get("message", {}).get("markAsReadToken")
+            if msg_id and token:
+                g.mark_as_read_tokens[msg_id] = token
+    except Exception:
+        pass
+
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
@@ -949,17 +958,8 @@ def handle_message(event):
     # 「既読」と「入力中アニメーション（...）」を表示する。
     # どちらも失敗しても返答自体には影響しないので、先頭に置いています。
 
-    # markAsReadToken の取得を複数の方法で試してログに出す
-    token_from_attr = getattr(event.message, "mark_as_read_token", None)
-    try:
-        token_from_dict = event.message.as_json_dict().get("markAsReadToken")
-    except Exception:
-        token_from_dict = None
-    logging.error(
-        "[markAsRead] attr=%r dict=%r event_type=%s",
-        token_from_attr, token_from_dict, type(event.message).__name__
-    )
-    mark_as_read_token = token_from_attr or token_from_dict
+    # callback() で生JSONから抽出したトークンを message_id で引く
+    mark_as_read_token = getattr(g, "mark_as_read_tokens", {}).get(event.message.id)
     threading.Thread(target=_mark_as_read, args=(mark_as_read_token,), daemon=True).start()  # 既読をつける
     threading.Thread(target=_start_loading, args=(user_id,), daemon=True).start()            # 「...」アニメーションを表示
 
