@@ -688,7 +688,7 @@ def _get_user(user_id: str) -> dict | None:
         return user_cache[user_id]
     result = (
         get_supabase().table("users")
-        .select("name, region, prefecture, city")
+        .select("name, region, prefecture, city, is_paid")
         .eq("line_user_id", user_id)
         .limit(1)
         .execute()
@@ -803,6 +803,21 @@ def _apply_rich_menu(user_id: str, is_paid: bool) -> None:
         line_bot_api.link_rich_menu_to_user(user_id, menu_id)
     except Exception as e:
         logging.error("rich menu link error: %s", e)
+
+
+def safe_push_message(user_id: str, messages, user_info: dict | None = None) -> None:
+    """有料会員のみ push_message を送る。
+    無料会員への push はコスト増を防ぐためブロックし WARNING を出力する。
+    reply_token が失効した場合のフォールバックとして使用する。
+    """
+    is_paid = bool((user_info or {}).get("is_paid"))
+    if not is_paid:
+        logging.warning("safe_push_message: blocked for free user %s", user_id)
+        return
+    try:
+        line_bot_api.push_message(user_id, messages)
+    except Exception as e:
+        logging.exception("safe_push_message error: %s", e)
 
 
 def _get_referral_code(user_id: str) -> str:
@@ -1598,12 +1613,15 @@ def handle_message(event):
         except Exception as e:
             logging.error("faq direct reply check error: %s", e)
 
-    # 登録済みユーザーへの Claude 返答：バックグラウンドスレッドで処理し、
-    # reply_token 失効後も届く push_message で送信
-    def _process(uid: str, msg: str, uinfo: dict, skip_faq: bool, save_missed: bool) -> None:
+    # 登録済みユーザーへの Claude 返答：バックグラウンドスレッドで処理
+    # reply_token（1分有効）を優先して使い、期限切れの場合のみ safe_push_message にフォールバック
+    def _process(
+        uid: str, msg: str, uinfo: dict,
+        skip_faq: bool, save_missed: bool, r_token: str,
+    ) -> None:
         reply_text = "申し訳ありません。\nただいま少し調子が悪いようです。\nしばらくしてからもう一度お試しください。"
         try:
-            # TOTAL_REPLY_TIMEOUT 秒のハードタイムアウトで30秒以内の返答を保証
+            # TOTAL_REPLY_TIMEOUT 秒のハードタイムアウトで返答を保証
             # メッセージのDB保存は get_claude_reply 内で行う
             with ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(get_claude_reply, uid, msg, uinfo, skip_faq, save_missed)
@@ -1630,15 +1648,20 @@ def handle_message(event):
                 restaurants = _query_restaurants(msg)
                 if restaurants:
                     messages_to_send.append(_build_restaurant_carousel(restaurants))
-            line_bot_api.push_message(uid, messages_to_send)
+            # reply_token を 1 回で使い切る（無料）
+            # 失敗（期限切れ等）した場合のみ safe_push_message にフォールバック（有料会員のみ）
+            try:
+                line_bot_api.reply_message(r_token, messages_to_send)
+            except Exception:
+                safe_push_message(uid, messages_to_send, uinfo)
         except Exception as e:
-            logging.exception("push_message error: %s", e)
+            logging.exception("send reply error: %s", e)
 
     # skip_faq = in_conversation（会話継続中は飲食店DB注入もスキップ）
     # save_missed = not in_conversation（新規トピックでFAQミスの場合のみ記録）
     threading.Thread(
         target=_process,
-        args=(user_id, user_message, user_info, in_conversation, not in_conversation),
+        args=(user_id, user_message, user_info, in_conversation, not in_conversation, event.reply_token),
         daemon=True,
     ).start()
 

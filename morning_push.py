@@ -173,8 +173,8 @@ def build_fallback_message(name: str) -> str:
 # ── Supabase ───────────────────────────────────────────
 
 def get_all_users() -> list[dict]:
-    """全ユーザーを取得する。失敗時は例外を上げる。"""
-    result = supabase.table("users").select("line_user_id, name, region").execute()
+    """有料会員のみ取得する。失敗時は例外を上げる。"""
+    result = supabase.table("users").select("line_user_id, name, region, is_paid").eq("is_paid", True).execute()
     return result.data or []
 
 
