@@ -1037,9 +1037,10 @@ def _faq_genre_search(
     return _search("ALL", "ALL")
 
 
-def _vector_search_faq(message: str, threshold: float = 0.75, limit: int = 3) -> list[dict]:
+def _vector_search_faq(message: str, threshold: float = 0.80, limit: int = 3) -> list[dict]:
     """OpenAI text-embedding-3-small でベクトル検索して FAQ を返す。
     openai_client が未設定またはエラー時は空リストを返す。
+    しきい値未満のFAQは返さない（Claudeにフォールバックさせる）。
     """
     if not openai_client:
         return []
@@ -1054,7 +1055,16 @@ def _vector_search_faq(message: str, threshold: float = 0.75, limit: int = 3) ->
             "match_threshold": threshold,
             "match_count": limit,
         }).execute()
-        return result.data or []
+        rows = result.data or []
+        # ヒット結果をログに出力（どのFAQが選ばれているか確認用）
+        for row in rows:
+            logging.error(
+                "vector_faq_hit | query=%r | question=%r | similarity=%.4f",
+                message, row.get("question"), row.get("similarity"),
+            )
+        if not rows:
+            logging.error("vector_faq_miss | query=%r | threshold=%.2f", message, threshold)
+        return rows
     except Exception as e:
         logging.error("vector search error: %s", e)
         return []
