@@ -88,28 +88,31 @@ def make_image(buttons: list, output_path: str) -> str:
     img = Image.new("RGB", (W, H), "#FFFFFF")
     draw = ImageDraw.Draw(img)
 
-    for idx, (label, bg, _) in enumerate(buttons):
+    for idx, (label, accent, _) in enumerate(buttons):
         col = idx % COL
         row = idx // COL
         x0, y0 = col * CW, row * CH
         x1, y1 = x0 + CW, y0 + CH
 
-        # 背景・枠線
-        draw.rectangle([x0, y0, x1, y1], fill=bg)
-        draw.rectangle([x0, y0, x1, y1], outline="#FFFFFF", width=6)
+        # 背景：白・枠線：薄いグレー
+        draw.rectangle([x0, y0, x1, y1], fill="#FFFFFF")
+        draw.rectangle([x0, y0, x1, y1], outline="#DDDDDD", width=6)
+
+        # ボタン下部にアクセントカラーの太線を引く
+        draw.rectangle([x0 + 10, y1 - 18, x1 - 10, y1 - 6], fill=accent)
 
         cx = x0 + CW // 2
-        cy = y0 + CH // 2
+        cy = y0 + CH // 2 - 20  # アクセントライン分だけ少し上に
 
         lines = _split_label(label)
         font = font_small if len(lines) > 1 else font_large
         line_h = CH // 4
 
         if len(lines) == 1:
-            draw.text((cx, cy), lines[0], font=font, fill="#FFFFFF", anchor="mm")
+            draw.text((cx, cy), lines[0], font=font, fill=accent, anchor="mm")
         else:
-            draw.text((cx, cy - line_h // 2), lines[0], font=font, fill="#FFFFFF", anchor="mm")
-            draw.text((cx, cy + line_h // 2), lines[1], font=font, fill="#FFFFFF", anchor="mm")
+            draw.text((cx, cy - line_h // 2), lines[0], font=font, fill=accent, anchor="mm")
+            draw.text((cx, cy + line_h // 2), lines[1], font=font, fill=accent, anchor="mm")
 
     img.save(output_path, "JPEG", quality=95)
     print(f"画像を生成しました: {output_path} ({W}x{H})")
