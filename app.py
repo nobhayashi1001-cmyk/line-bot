@@ -19,7 +19,7 @@ from linebot.models import (
     MessageEvent, TextMessage, TextSendMessage, FollowEvent,
     TemplateSendMessage, ButtonsTemplate, ConfirmTemplate,
     CarouselTemplate, CarouselColumn, MessageAction, URIAction,
-    QuickReply, QuickReplyButton,
+    QuickReply, QuickReplyButton, FlexSendMessage,
 )
 import httpx
 import anthropic
@@ -222,13 +222,16 @@ _CITIES: dict[str, list[str]] = {
 }
 
 _MENU_QR_ITEMS = [
-    ("📰 地元情報",       "地元情報"),
-    ("🍽️ 食事・レシピ",   "食事・レシピ"),
-    ("🏥 健康",           "健康"),
-    ("🚶 運動",           "運動"),
-    ("💬 相談",           "相談"),
-    ("🎁 友達に紹介",     "友達に紹介"),
+    ("💬 相談する",   "相談する"),
+    ("🔍 探す",       "探す"),
+    ("📖 知る",       "知る"),
+    ("🤝 つながる",   "つながる"),
+    ("🎁 友達に紹介", "友達に紹介"),
+    ("🏠 最初に戻る", "最初に戻る"),
 ]
+
+# クイックリプライの右端に必ず配置する「最初に戻る」ボタン
+_QR_BACK = ("🏠 最初に戻る", "最初に戻る")
 
 # ── リッチメッセージ ヘルパー ──────────────────────────
 
@@ -336,6 +339,231 @@ def _build_restaurant_carousel(restaurants: list[dict]) -> TemplateSendMessage:
         alt_text="お店の情報",
         template=CarouselTemplate(columns=columns),
     )
+
+
+# ── フレックスメッセージ ────────────────────────────────
+
+def _make_card_bubble(emoji: str, title: str, desc: str, btn_text: str, color: str) -> dict:
+    """シンプルなカード型バブル（絵文字ヒーロー＋説明＋ボタン）を返す。"""
+    return {
+        "type": "bubble",
+        "size": "kilo",
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "md",
+            "paddingAll": "xl",
+            "contents": [
+                {"type": "text", "text": emoji, "size": "4xl", "align": "center"},
+                {
+                    "type": "text", "text": title,
+                    "weight": "bold", "size": "lg",
+                    "align": "center", "wrap": True,
+                },
+                {
+                    "type": "text", "text": desc,
+                    "size": "sm", "color": "#888888",
+                    "align": "center", "wrap": True,
+                },
+            ],
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "paddingAll": "lg",
+            "contents": [
+                {
+                    "type": "button",
+                    "action": {"type": "message", "label": "タップする", "text": btn_text},
+                    "style": "primary",
+                    "color": color,
+                    "height": "sm",
+                }
+            ],
+        },
+    }
+
+
+def _flex_consult_menu() -> FlexSendMessage:
+    """①相談する：3カードカルーセル"""
+    bubbles = [
+        _make_card_bubble("📱", "スマホの使いかた", "操作方法からアプリまで\nやさしく教えます", "スマホの使いかたを教えてください", "#4A90D9"),
+        _make_card_bubble("🏥", "健康・からだ", "体の悩みや薬のこと\nいつでも相談できます", "健康について相談したいことがあります", "#5BAD6F"),
+        _make_card_bubble("🏠", "お家の困りごと", "水漏れや電気など\n業者探しもお手伝い", "家の困りごとを相談したいです", "#E8734A"),
+    ]
+    return FlexSendMessage(
+        alt_text="何についてご相談ですか？",
+        contents={"type": "carousel", "contents": bubbles},
+    )
+
+
+def _flex_search_menu() -> FlexSendMessage:
+    """②探す：3カードカルーセル"""
+    bubbles = [
+        _make_card_bubble("🍽️", "近くの美味しいお店", "和食・洋食・カフェなど\nおすすめを教えます", "近くの美味しいお店を教えてください", "#E8734A"),
+        _make_card_bubble("🏥", "近くの病院", "内科・整形外科など\n診療科で探せます", "近くの病院を教えてください", "#5BAD6F"),
+        _make_card_bubble("🏛️", "公共施設・公園", "市役所・図書館・公園など\n近くの施設を案内", "近くの公共施設や公園を教えてください", "#4A90D9"),
+    ]
+    return FlexSendMessage(
+        alt_text="何をお探しですか？",
+        contents={"type": "carousel", "contents": bubbles},
+    )
+
+
+def _flex_know_menu() -> FlexSendMessage:
+    """③知る：3カードカルーセル"""
+    bubbles = [
+        _make_card_bubble("⛅", "今日の藤沢の天気", "雨・気温・風など\n今日の天気を確認", "今日の藤沢の天気を教えてください", "#4A90D9"),
+        _make_card_bubble("🗑️", "ゴミの収集日", "燃えるゴミ・資源ゴミ\n粗大ゴミの出し方も", "藤沢市のゴミの収集日を教えてください", "#5BAD6F"),
+        _make_card_bubble("🎉", "街のイベント", "近くのイベントや\n季節の行事を紹介", "藤沢の街のイベントを教えてください", "#D95B7A"),
+    ]
+    return FlexSendMessage(
+        alt_text="何を知りたいですか？",
+        contents={"type": "carousel", "contents": bubbles},
+    )
+
+
+def _flex_connect_menu() -> FlexSendMessage:
+    """④つながる：3カードカルーセル"""
+    bubbles = [
+        _make_card_bubble("🌸", "趣味のサークル", "手芸・園芸・将棋など\n同じ趣味の仲間を", "趣味のサークルを探したいです", "#D95B7A"),
+        _make_card_bubble("👥", "地域の集まり", "町内会・老人会など\n地域の輪に加わろう", "地域の集まりについて教えてください", "#8B6BB1"),
+        _make_card_bubble("📻", "昭和の思い出話", "懐かしい話を一緒に\n楽しみましょう", "昭和の思い出話をしましょう", "#E8A84A"),
+    ]
+    return FlexSendMessage(
+        alt_text="つながりを広げましょう",
+        contents={"type": "carousel", "contents": bubbles},
+    )
+
+
+def _flex_referral_menu(referral_code: str) -> FlexSendMessage:
+    """⑤友達に紹介：紹介コード表示カード"""
+    bubble = {
+        "type": "bubble",
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "md",
+            "paddingAll": "xl",
+            "contents": [
+                {"type": "text", "text": "🎁", "size": "4xl", "align": "center"},
+                {"type": "text", "text": "お友達を紹介しよう", "weight": "bold", "size": "xl", "align": "center"},
+                {"type": "separator", "margin": "md"},
+                {
+                    "type": "text", "text": "紹介すると2人に5回プレゼント",
+                    "size": "md", "color": "#D95B7A", "align": "center",
+                    "weight": "bold", "margin": "md",
+                },
+                {"type": "separator", "margin": "md"},
+                {
+                    "type": "box", "layout": "vertical", "margin": "md", "spacing": "sm",
+                    "contents": [
+                        {"type": "text", "text": "あなたの紹介コード", "size": "sm", "color": "#888888", "align": "center"},
+                        {"type": "text", "text": referral_code, "size": "3xl", "weight": "bold", "align": "center", "color": "#4A90D9"},
+                    ],
+                },
+                {
+                    "type": "text",
+                    "text": "このコードをお友達に伝えてください",
+                    "size": "xs", "color": "#888888", "align": "center", "wrap": True, "margin": "md",
+                },
+            ],
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "paddingAll": "lg",
+            "contents": [
+                {
+                    "type": "button",
+                    "action": {"type": "message", "label": "紹介メッセージを見る", "text": "友達に紹介するメッセージを見せてください"},
+                    "style": "primary",
+                    "color": "#D95B7A",
+                }
+            ],
+        },
+    }
+    return FlexSendMessage(alt_text="友達に紹介しよう", contents=bubble)
+
+
+def _flex_upgrade_menu() -> FlexSendMessage:
+    """⑥会員登録（無料会員向け）：有料プランご案内カード"""
+    bubble = {
+        "type": "bubble",
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "md",
+            "paddingAll": "xl",
+            "contents": [
+                {"type": "text", "text": "✨", "size": "4xl", "align": "center"},
+                {"type": "text", "text": "有料会員のご案内", "weight": "bold", "size": "xl", "align": "center"},
+                {"type": "separator", "margin": "md"},
+                {
+                    "type": "box", "layout": "vertical", "margin": "md", "spacing": "sm",
+                    "contents": [
+                        {"type": "text", "text": "AIと何回でも話し放題", "size": "md", "wrap": True},
+                        {"type": "text", "text": "24時間いつでも相談できる", "size": "md", "wrap": True},
+                        {"type": "text", "text": "専任コンシェルジュ対応", "size": "md", "wrap": True},
+                    ],
+                },
+            ],
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "paddingAll": "lg",
+            "contents": [
+                {
+                    "type": "button",
+                    "action": {"type": "message", "label": "詳しく教えてもらう", "text": "有料会員の詳細を教えてください"},
+                    "style": "primary",
+                    "color": "#C8A000",
+                }
+            ],
+        },
+    }
+    return FlexSendMessage(alt_text="有料会員のご案内", contents=bubble)
+
+
+def _flex_ai_direct_menu() -> FlexSendMessage:
+    """⑥AIに直接相談（有料会員向け）：ウェルカムカード"""
+    bubble = {
+        "type": "bubble",
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "md",
+            "paddingAll": "xl",
+            "contents": [
+                {"type": "text", "text": "🤖", "size": "4xl", "align": "center"},
+                {
+                    "type": "text", "text": "なんでも直接聞いてください",
+                    "weight": "bold", "size": "lg", "align": "center", "wrap": True,
+                },
+                {"type": "separator", "margin": "md"},
+                {
+                    "type": "text",
+                    "text": "24時間いつでも、何でもお気軽に。\nあなた専任のコンシェルジュが\nすぐにお答えします。",
+                    "size": "md", "color": "#555555", "align": "center", "wrap": True, "margin": "md",
+                },
+            ],
+        },
+        "footer": {
+            "type": "box",
+            "layout": "vertical",
+            "paddingAll": "lg",
+            "contents": [
+                {
+                    "type": "button",
+                    "action": {"type": "message", "label": "さっそく相談する", "text": "AIに相談したいことがあります"},
+                    "style": "primary",
+                    "color": "#C8A000",
+                }
+            ],
+        },
+    }
+    return FlexSendMessage(alt_text="なんでも直接聞いてください", contents=bubble)
 
 
 # ── 登録フロー ─────────────────────────────────────────
@@ -982,9 +1210,11 @@ def handle_message(event):
         )
         return
 
-    # 「最初に戻る」系キーワード：履歴をリセットしてメニューを案内（Claudeを呼ばない）
+    msg = user_message.strip()
+
+    # 「最初に戻る」系：履歴をリセットしてメニューを案内
     RESET_KEYWORDS = {"最初に戻る", "メニュー", "メニューに戻る", "他のことを聞く", "はじめに戻る", "トップ", "ホーム"}
-    if user_message.strip() in RESET_KEYWORDS:
+    if msg in RESET_KEYWORDS:
         _clear_history(user_id)
         line_bot_api.reply_message(
             event.reply_token,
@@ -995,8 +1225,77 @@ def handle_message(event):
         )
         return
 
-    # 「友達に紹介」キーワード：紹介コードを案内（Claudeを呼ばない）
-    if user_message.strip() == "友達に紹介":
+    # ① 相談する
+    if msg == "相談する":
+        qr = _build_quick_reply([
+            ("操作を教える",   "スマホの操作を教えてください"),
+            ("病院を探す",     "近くの病院を探してください"),
+            ("業者を呼ぶ",     "家の修繕業者を教えてください"),
+            _QR_BACK,
+        ])
+        line_bot_api.reply_message(event.reply_token, [
+            _flex_consult_menu(),
+            TextSendMessage(text="🎤 声で話しかけても大丈夫ですよ", quick_reply=qr),
+        ])
+        return
+
+    # ② 探す
+    if msg == "探す":
+        qr = _build_quick_reply([
+            ("和食がいい",         "和食のお店を教えてください"),
+            ("いま開いている所",   "今開いているお店を教えてください"),
+            _QR_BACK,
+        ])
+        line_bot_api.reply_message(event.reply_token, [
+            _flex_search_menu(),
+            TextSendMessage(text="🎤 声で話しかけても大丈夫ですよ", quick_reply=qr),
+        ])
+        return
+
+    # ③ 知る
+    if msg == "知る":
+        qr = _build_quick_reply([
+            ("明日の天気は？",     "明日の藤沢の天気を教えてください"),
+            ("粗大ゴミの出し方",   "粗大ゴミの出し方を教えてください"),
+            ("もっと見る",         "藤沢の地域情報をもっと教えてください"),
+            _QR_BACK,
+        ])
+        line_bot_api.reply_message(event.reply_token, [
+            _flex_know_menu(),
+            TextSendMessage(text="🎤 声で話しかけても大丈夫ですよ", quick_reply=qr),
+        ])
+        return
+
+    # ④ つながる
+    if msg == "つながる":
+        qr = _build_quick_reply([
+            ("散歩仲間",       "散歩仲間を探したいです"),
+            ("ゲートボール",   "ゲートボールの情報を教えてください"),
+            ("昔の話をする",   "昭和の思い出について話しましょう"),
+            _QR_BACK,
+        ])
+        line_bot_api.reply_message(event.reply_token, [
+            _flex_connect_menu(),
+            TextSendMessage(text="🎤 声で話しかけても大丈夫ですよ", quick_reply=qr),
+        ])
+        return
+
+    # ⑤ 友達に紹介
+    if msg == "友達に紹介":
+        referral_code = _get_referral_code(user_id)
+        qr = _build_quick_reply([
+            ("LINEで送る",         "友達に紹介するメッセージを見せてください"),
+            ("やり方を教える",     "友達に紹介するやり方を教えてください"),
+            _QR_BACK,
+        ])
+        line_bot_api.reply_message(event.reply_token, [
+            _flex_referral_menu(referral_code),
+            TextSendMessage(text="🎤 声で話しかけても大丈夫ですよ", quick_reply=qr),
+        ])
+        return
+
+    # 「紹介メッセージを見る」→ コピー用テキストを表示
+    if msg == "友達に紹介するメッセージを見せてください":
         referral_code = _get_referral_code(user_id)
         line_bot_api.reply_message(
             event.reply_token,
@@ -1004,21 +1303,21 @@ def handle_message(event):
                 text=(
                     "お友達にこのメッセージをそのまま送ってください！\n\n"
                     "━━━━━━━━━━━━\n"
-                    "🏘️ 地元くらしの御用聞き\n"
+                    "地元くらしの御用聞き\n"
                     "藤沢市の生活をAIがサポートします！\n\n"
-                    "▼ 友達追加はこちら\n"
+                    "友達追加はこちら\n"
                     "https://line.me/R/ti/p/@135dsiqh\n\n"
                     f"紹介コード：{referral_code}\n"
-                    "（登録時に入力すると2人に5回プレゼント🎁）\n"
+                    "（登録時に入力すると2人に5回プレゼント）\n"
                     "━━━━━━━━━━━━"
                 ),
-                quick_reply=_build_quick_reply(_MENU_QR_ITEMS),
+                quick_reply=_build_quick_reply([_QR_BACK]),
             ),
         )
         return
 
     # 「紹介コード：XXXXXX」パターン：紹介コードを登録
-    referral_match = re.match(r'紹介コード[：:]\s*([A-Fa-f0-9]{6,8})', user_message.strip())
+    referral_match = re.match(r'紹介コード[：:]\s*([A-Fa-f0-9]{6,8})', msg)
     if referral_match:
         code = referral_match.group(1).upper()
         reply_text = _handle_referral_input(user_id, code)
@@ -1031,26 +1330,24 @@ def handle_message(event):
         )
         return
 
-    # 「AIに直接相談」：有料会員チェック（フリーユーザーにはアップセル案内）
-    if user_message.strip() == "AIに直接相談":
+    # ⑥ 会員登録（無料会員）/ AIに直接相談（有料会員）
+    if msg in ("会員登録", "AIに直接相談"):
         try:
             paid_result = get_supabase().table("users").select("is_paid").eq("line_user_id", user_id).execute()
             is_paid = paid_result.data[0].get("is_paid") if paid_result.data else False
         except Exception:
             is_paid = False
-        if not is_paid:
-            line_bot_api.reply_message(
-                event.reply_token,
-                TextSendMessage(
-                    text=(
-                        "AIに直接相談は有料会員向けのサービスです。\n\n"
-                        "詳しくはスタッフにお問い合わせください。"
-                    ),
-                    quick_reply=_build_quick_reply(_MENU_QR_ITEMS),
-                ),
-            )
-            return
-        # 有料会員の場合はそのままClaude処理へ進む
+        qr = _build_quick_reply([
+            ("申し込む",       "有料会員の申し込み方法を教えてください"),
+            ("詳しく聞く",     "有料会員の詳細を教えてください"),
+            _QR_BACK,
+        ])
+        flex_msg = _flex_ai_direct_menu() if is_paid else _flex_upgrade_menu()
+        line_bot_api.reply_message(event.reply_token, [
+            flex_msg,
+            TextSendMessage(text="🎤 声で話しかけても大丈夫ですよ", quick_reply=qr),
+        ])
+        return
 
     # 利用回数チェック（is_paid なら通過、bonus_count → daily_count の順で消費）
     if not _check_and_increment_usage(user_id):
