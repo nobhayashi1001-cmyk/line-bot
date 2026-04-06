@@ -6,7 +6,7 @@ import re
 import secrets
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from datetime import date
+from datetime import date, datetime, timezone, timedelta
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
 import json
@@ -1148,9 +1148,41 @@ def _load_history(user_id: str) -> list[dict]:
         return []
 
 
+def _is_conversation_active(user_id: str) -> bool:
+    """直前のDBメッセージがAIからの返信かつ30分以内なら会話継続中とみなす。
+
+    会話継続中と判定された場合は FAQ 検索をスキップし、
+    過去の会話文脈を維持したまま Claude に直接投げる。
+    """
+    try:
+        result = (
+            get_supabase().table("messages")
+            .select("role, created_at")
+            .eq("line_user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if not result.data:
+            return False
+        last = result.data[0]
+        if last["role"] != "assistant":
+            return False
+        last_time = datetime.fromisoformat(last["created_at"].replace("Z", "+00:00"))
+        return (datetime.now(timezone.utc) - last_time) < timedelta(minutes=30)
+    except Exception as e:
+        logging.error("conversation active check error: %s", e)
+        return False
+
+
 # ── Claude 返答 ────────────────────────────────────────
 
-def get_claude_reply(user_id: str, user_message: str, user_info: dict | None = None) -> str:
+def get_claude_reply(
+    user_id: str,
+    user_message: str,
+    user_info: dict | None = None,
+    skip_faq: bool = False,
+) -> str:
     # 毎回DBから履歴を取得（DBが唯一の真実源。サーバー再起動・複数ワーカーに対応）
     history = _load_history(user_id)
     history.append({"role": "user", "content": user_message})
@@ -1170,17 +1202,19 @@ def get_claude_reply(user_id: str, user_message: str, user_info: dict | None = N
             f"\n・お住まいの地域：{user_info['region']}"
         )
 
-    # 飲食系の質問 かつ 藤沢市ユーザーのみDBから店舗情報を取得（他都市は順次対応予定）
-    user_region = (user_info or {}).get("region", "")
-    if _is_food_query(user_message) and "藤沢" in user_region:
-        restaurant_context = _search_restaurants(user_message)
-        if restaurant_context:
-            system += f"\n\n{restaurant_context}\n上記の情報を参考にして答えてください。"
+    # 会話継続中はFAQ・飲食店DBをスキップして文脈を優先する
+    if not skip_faq:
+        # 飲食系の質問 かつ 藤沢市ユーザーのみDBから店舗情報を取得（他都市は順次対応予定）
+        user_region = (user_info or {}).get("region", "")
+        if _is_food_query(user_message) and "藤沢" in user_region:
+            restaurant_context = _search_restaurants(user_message)
+            if restaurant_context:
+                system += f"\n\n{restaurant_context}\n上記の情報を参考にして答えてください。"
 
-    # FAQ RAG: 全ユーザー対象（ユーザーの地域を優先して検索）
-    faq_context = _search_faq(user_message, user_info)
-    if faq_context:
-        system += f"\n\n{faq_context}\n上記のFAQ情報を参考にして答えてください。"
+        # FAQ RAG: 全ユーザー対象（ユーザーの地域を優先して検索）
+        faq_context = _search_faq(user_message, user_info)
+        if faq_context:
+            system += f"\n\n{faq_context}\n上記のFAQ情報を参考にして答えてください。"
 
     try:
         response = anthropic_client.messages.create(
@@ -1441,30 +1475,34 @@ def handle_message(event):
                 logging.error("limit message send error: %s", e)
         return
 
-    # FAQ直接返信チェック（button/carousel タイプはClaudeを呼ばず即時返信）
-    try:
-        faq_msg = _faq_direct_reply(user_message, user_info)
-        if faq_msg is not None:
-            line_bot_api.reply_message(
-                event.reply_token,
-                [faq_msg, TextSendMessage(
-                    text="他にも何かありますか？",
-                    quick_reply=_build_quick_reply(_MENU_QR_ITEMS),
-                )],
-            )
-            return
-    except Exception as e:
-        logging.error("faq direct reply check error: %s", e)
+    # 会話継続中かどうかを判定（直前がAIの返信かつ30分以内）
+    in_conversation = _is_conversation_active(user_id)
+
+    # FAQ直接返信チェック（会話継続中はスキップして文脈を維持）
+    if not in_conversation:
+        try:
+            faq_msg = _faq_direct_reply(user_message, user_info)
+            if faq_msg is not None:
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    [faq_msg, TextSendMessage(
+                        text="他にも何かありますか？",
+                        quick_reply=_build_quick_reply(_MENU_QR_ITEMS),
+                    )],
+                )
+                return
+        except Exception as e:
+            logging.error("faq direct reply check error: %s", e)
 
     # 登録済みユーザーへの Claude 返答：バックグラウンドスレッドで処理し、
     # reply_token 失効後も届く push_message で送信
-    def _process(uid: str, msg: str, uinfo: dict) -> None:
+    def _process(uid: str, msg: str, uinfo: dict, skip_faq: bool) -> None:
         reply_text = "申し訳ありません。\nただいま少し調子が悪いようです。\nしばらくしてからもう一度お試しください。"
         try:
             # TOTAL_REPLY_TIMEOUT 秒のハードタイムアウトで30秒以内の返答を保証
             # メッセージのDB保存は get_claude_reply 内で行う
             with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(get_claude_reply, uid, msg, uinfo)
+                future = executor.submit(get_claude_reply, uid, msg, uinfo, skip_faq)
                 try:
                     reply_text = future.result(timeout=TOTAL_REPLY_TIMEOUT)
                 except FuturesTimeoutError:
@@ -1482,9 +1520,9 @@ def handle_message(event):
                     quick_reply=_get_context_quick_reply(msg),
                 )
             ]
-            # 飲食系クエリかつ藤沢ユーザーならカルーセルも追加
+            # 飲食系クエリかつ藤沢ユーザーならカルーセルも追加（新規トピックのみ）
             user_region = (uinfo or {}).get("region", "")
-            if _is_food_query(msg) and "藤沢" in user_region:
+            if not skip_faq and _is_food_query(msg) and "藤沢" in user_region:
                 restaurants = _query_restaurants(msg)
                 if restaurants:
                     messages_to_send.append(_build_restaurant_carousel(restaurants))
@@ -1492,7 +1530,7 @@ def handle_message(event):
         except Exception as e:
             logging.exception("push_message error: %s", e)
 
-    threading.Thread(target=_process, args=(user_id, user_message, user_info), daemon=True).start()
+    threading.Thread(target=_process, args=(user_id, user_message, user_info, in_conversation), daemon=True).start()
 
 
 # ── ヘルスチェック ────────────────────────────────────
