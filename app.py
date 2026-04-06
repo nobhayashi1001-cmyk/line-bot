@@ -10,7 +10,7 @@ from datetime import date, datetime, timezone, timedelta
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
 import json
-from flask import Flask, request, abort, g
+from flask import Flask, request, abort, g, jsonify
 
 logging.basicConfig(level=logging.ERROR)
 from linebot import LineBotApi, WebhookHandler
@@ -44,6 +44,7 @@ SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 RICH_MENU_FREE_ID = os.environ.get("RICH_MENU_FREE_ID", "")
 RICH_MENU_PAID_ID = os.environ.get("RICH_MENU_PAID_ID", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+LIFF_ID = os.environ.get("LIFF_ID", "")
 
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
@@ -1664,6 +1665,285 @@ def handle_message(event):
         args=(user_id, user_message, user_info, in_conversation, not in_conversation, event.reply_token),
         daemon=True,
     ).start()
+
+
+# ── LIFF マイページ ───────────────────────────────────
+
+_LIFF_HTML = """\
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<title>マイページ</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:20px;background:#f0f4f8;color:#333;line-height:1.7}}
+.hd{{background:#1565c0;color:#fff;padding:20px 16px;text-align:center}}
+.hd h1{{font-size:26px;font-weight:bold}}
+.hd p{{font-size:18px;margin-top:6px;opacity:.9}}
+.wrap{{max-width:480px;margin:0 auto;padding:16px}}
+.card{{background:#fff;border-radius:14px;padding:20px;margin-bottom:16px;box-shadow:0 2px 10px rgba(0,0,0,.08)}}
+.card-ttl{{font-size:17px;font-weight:bold;color:#1565c0;border-bottom:2px solid #1565c0;padding-bottom:8px;margin-bottom:14px}}
+.row{{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #eee}}
+.row:last-child{{border-bottom:none}}
+.lbl{{font-size:19px;color:#555}}
+.val{{font-size:24px;font-weight:bold;color:#1565c0}}
+.val.grn{{color:#2e7d32}}
+.info-lbl{{font-size:16px;color:#888;margin-bottom:4px}}
+.info-val{{font-size:22px;font-weight:bold;margin-bottom:18px}}
+.form-grp{{margin-bottom:18px}}
+.form-lbl{{display:block;font-size:19px;color:#444;margin-bottom:6px;font-weight:bold}}
+.form-inp{{width:100%;font-size:20px;padding:14px;border:2px solid #ccc;border-radius:10px;background:#fff}}
+.form-inp:focus{{border-color:#1565c0;outline:none}}
+.btn{{display:block;width:100%;padding:20px;font-size:23px;font-weight:bold;border:none;border-radius:12px;cursor:pointer;text-align:center;margin-top:8px}}
+.btn-save{{background:#1565c0;color:#fff}}
+.btn-save:active{{background:#0d47a1}}
+.loader{{text-align:center;padding:48px;color:#888;font-size:20px}}
+.errmsg{{background:#fff0f0;border:2px solid #e53935;border-radius:10px;padding:18px;color:#b71c1c;text-align:center;font-size:19px;line-height:1.6}}
+.ok-msg{{background:#e8f5e9;border:2px solid #43a047;border-radius:10px;padding:14px;color:#2e7d32;text-align:center;font-size:19px;display:none;margin-bottom:14px}}
+.badge{{display:inline-block;background:#f57c00;color:#fff;padding:4px 14px;border-radius:20px;font-size:17px;font-weight:bold;margin-left:8px}}
+</style>
+</head>
+<body>
+<div class="hd">
+  <h1>🏠 マイページ</h1>
+  <p id="greeting"></p>
+</div>
+<div class="wrap">
+  <div id="loader" class="loader">読み込み中…</div>
+  <div id="errmsg" class="errmsg" style="display:none"></div>
+  <div id="content" style="display:none">
+
+    <!-- 利用状況 -->
+    <div class="card">
+      <div class="card-ttl">📊 今日の利用状況</div>
+      <div class="row">
+        <span class="lbl">今日の残り回数</span>
+        <span class="val" id="v-remaining">-</span>
+      </div>
+      <div class="row">
+        <span class="lbl">ボーナス回数 🎁</span>
+        <span class="val grn" id="v-bonus">-</span>
+      </div>
+    </div>
+
+    <!-- 登録情報 -->
+    <div class="card">
+      <div class="card-ttl">👤 登録情報</div>
+      <div class="info-lbl">お住まい</div>
+      <div class="info-val" id="v-location">-</div>
+      <div class="info-lbl">生年月日</div>
+      <div class="info-val" id="v-birthdate">-</div>
+    </div>
+
+    <!-- 編集フォーム -->
+    <div class="card">
+      <div class="card-ttl">✏️ 登録情報を変更する</div>
+      <div id="ok-msg" class="ok-msg">✅ 保存しました！</div>
+      <div class="form-grp">
+        <label class="form-lbl">お名前（任意）</label>
+        <input class="form-inp" id="f-name" type="text" placeholder="例：田中 花子">
+      </div>
+      <div class="form-grp">
+        <label class="form-lbl">都道府県</label>
+        <select class="form-inp" id="f-pref"></select>
+      </div>
+      <div class="form-grp">
+        <label class="form-lbl">市区町村</label>
+        <select class="form-inp" id="f-city"></select>
+      </div>
+      <div class="form-grp">
+        <label class="form-lbl">生年月日</label>
+        <input class="form-inp" id="f-birth" type="text" placeholder="例：1950年1月1日">
+      </div>
+      <button class="btn btn-save" onclick="save()">💾 保存する</button>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /wrap -->
+
+<script>
+var LIFF_ID = "{liff_id}";
+var PREFS   = {prefs_json};
+var CITIES  = {cities_json};
+var uid     = null;
+
+// 都道府県セレクト構築
+var psel = document.getElementById('f-pref');
+psel.innerHTML = '<option value="">選択してください</option>';
+PREFS.forEach(function(p){{
+  var o = document.createElement('option'); o.value = o.textContent = p; psel.appendChild(o);
+}});
+psel.addEventListener('change', function(){{
+  buildCitySelect(this.value, '');
+}});
+
+function buildCitySelect(pref, selected){{
+  var csel = document.getElementById('f-city');
+  csel.innerHTML = '<option value="">選択してください</option>';
+  (CITIES[pref]||[]).forEach(function(c){{
+    var o=document.createElement('option'); o.value=o.textContent=c;
+    if(c===selected) o.selected=true;
+    csel.appendChild(o);
+  }});
+}}
+
+// LIFF 初期化
+liff.init({{liffId: LIFF_ID}})
+  .then(function(){{
+    if(!liff.isLoggedIn()){{ liff.login(); return; }}
+    return liff.getProfile();
+  }})
+  .then(function(profile){{
+    if(!profile) return;
+    uid = profile.userId;
+    document.getElementById('greeting').textContent = profile.displayName + 'さん';
+    return loadUser(profile.userId);
+  }})
+  .catch(function(e){{
+    showErr('ログインできませんでした。\\nLINEアプリから開き直してください。');
+  }});
+
+function loadUser(userId){{
+  return fetch('/liff/api/user?line_user_id=' + encodeURIComponent(userId))
+    .then(function(r){{ return r.json(); }})
+    .then(function(d){{
+      if(d.error){{ showErr('ユーザー情報が見つかりません。\\nLINEで登録を完了してください。'); return; }}
+      render(d);
+    }})
+    .catch(function(){{ showErr('通信エラーが発生しました。'); }});
+}}
+
+function render(d){{
+  document.getElementById('v-remaining').textContent = d.is_paid ? '無制限' : (d.remaining_today + ' 回');
+  document.getElementById('v-bonus').textContent = d.bonus_count + ' 回';
+  document.getElementById('v-location').textContent = (d.prefecture||'') + (d.city||'') || '未設定';
+  document.getElementById('v-birthdate').textContent = d.birthdate || '未設定';
+  document.getElementById('f-name').value  = d.name || '';
+  document.getElementById('f-birth').value = d.birthdate || '';
+  if(d.prefecture){{
+    document.getElementById('f-pref').value = d.prefecture;
+    buildCitySelect(d.prefecture, d.city||'');
+  }}
+  document.getElementById('loader').style.display  = 'none';
+  document.getElementById('content').style.display = 'block';
+}}
+
+function save(){{
+  if(!uid) return;
+  var pref  = document.getElementById('f-pref').value;
+  var city  = document.getElementById('f-city').value;
+  var body  = {{
+    line_user_id: uid,
+    name:         document.getElementById('f-name').value.trim(),
+    prefecture:   pref,
+    city:         city,
+    birthdate:    document.getElementById('f-birth').value.trim()
+  }};
+  fetch('/liff/api/user', {{
+    method: 'POST',
+    headers: {{'Content-Type':'application/json'}},
+    body: JSON.stringify(body)
+  }})
+  .then(function(r){{ return r.json(); }})
+  .then(function(d){{
+    if(d.success){{
+      document.getElementById('v-location').textContent = (pref||'') + (city||'') || '未設定';
+      var m = document.getElementById('ok-msg');
+      m.style.display = 'block';
+      setTimeout(function(){{ m.style.display='none'; }}, 3000);
+    }} else {{
+      alert('保存に失敗しました。もう一度お試しください。');
+    }}
+  }})
+  .catch(function(){{ alert('通信エラーが発生しました。'); }});
+}}
+
+function showErr(msg){{
+  document.getElementById('loader').style.display = 'none';
+  var b = document.getElementById('errmsg');
+  b.textContent = msg; b.style.display = 'block';
+}}
+</script>
+</body>
+</html>
+"""
+
+
+@app.route("/liff/mypage", methods=["GET"])
+def liff_mypage():
+    html = _LIFF_HTML.format(
+        liff_id=LIFF_ID,
+        prefs_json=json.dumps(_PREFECTURES, ensure_ascii=False),
+        cities_json=json.dumps(_CITIES, ensure_ascii=False),
+    )
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+@app.route("/liff/api/user", methods=["GET"])
+def liff_get_user():
+    user_id = request.args.get("line_user_id", "").strip()
+    if not user_id:
+        return jsonify({"error": "line_user_id required"}), 400
+    try:
+        result = get_supabase().table("users").select(
+            "name, region, prefecture, city, birthdate, is_paid, daily_count, bonus_count, last_used_date"
+        ).eq("line_user_id", user_id).limit(1).execute()
+        if not result.data:
+            return jsonify({"error": "user not found"}), 404
+        u = result.data[0]
+        today = date.today().isoformat()
+        is_paid = bool(u.get("is_paid"))
+        if is_paid:
+            remaining = 999
+        else:
+            last_used   = u.get("last_used_date")
+            daily_count = u.get("daily_count") or 0
+            if last_used != today:
+                daily_count = 0
+            remaining = max(0, FREE_DAILY_LIMIT - daily_count)
+        return jsonify({
+            "name":           u.get("name") or "",
+            "prefecture":     u.get("prefecture") or "",
+            "city":           u.get("city") or "",
+            "birthdate":      u.get("birthdate") or "",
+            "is_paid":        is_paid,
+            "remaining_today": remaining,
+            "bonus_count":    u.get("bonus_count") or 0,
+        })
+    except Exception as e:
+        logging.exception("liff_get_user error: %s", e)
+        return jsonify({"error": "server error"}), 500
+
+
+@app.route("/liff/api/user", methods=["POST"])
+def liff_update_user():
+    data = request.get_json(silent=True) or {}
+    user_id = data.get("line_user_id", "").strip()
+    if not user_id:
+        return jsonify({"error": "line_user_id required"}), 400
+    update: dict = {}
+    if "name" in data:
+        update["name"] = (data["name"] or "").strip()
+    if "prefecture" in data or "city" in data:
+        pref = (data.get("prefecture") or "").strip()
+        city = (data.get("city") or "").strip()
+        update["prefecture"] = pref
+        update["city"]       = city
+        update["region"]     = pref + city
+    if "birthdate" in data:
+        update["birthdate"] = (data["birthdate"] or "").strip()
+    if not update:
+        return jsonify({"error": "no fields to update"}), 400
+    try:
+        get_supabase().table("users").update(update).eq("line_user_id", user_id).execute()
+        user_cache.pop(user_id, None)   # キャッシュを無効化
+        return jsonify({"success": True})
+    except Exception as e:
+        logging.exception("liff_update_user error: %s", e)
+        return jsonify({"error": "server error"}), 500
 
 
 # ── ヘルスチェック ────────────────────────────────────
