@@ -1307,10 +1307,9 @@ def handle_message(event):
             ("業者を呼ぶ",     "家の修繕業者を教えてください"),
             _QR_BACK,
         ])
-        line_bot_api.reply_message(event.reply_token, [
-            _flex_consult_menu(),
-            TextSendMessage(text="🎤 声で話しかけても大丈夫ですよ", quick_reply=qr),
-        ])
+        flex = _flex_consult_menu()
+        flex.quick_reply = qr
+        line_bot_api.reply_message(event.reply_token, flex)
         return
 
     # ② 探す
@@ -1320,10 +1319,9 @@ def handle_message(event):
             ("いま開いている所",   "今開いているお店を教えてください"),
             _QR_BACK,
         ])
-        line_bot_api.reply_message(event.reply_token, [
-            _flex_search_menu(),
-            TextSendMessage(text="🎤 声で話しかけても大丈夫ですよ", quick_reply=qr),
-        ])
+        flex = _flex_search_menu()
+        flex.quick_reply = qr
+        line_bot_api.reply_message(event.reply_token, flex)
         return
 
     # ③ 知る
@@ -1334,10 +1332,9 @@ def handle_message(event):
             ("もっと見る",         "藤沢の地域情報をもっと教えてください"),
             _QR_BACK,
         ])
-        line_bot_api.reply_message(event.reply_token, [
-            _flex_know_menu(),
-            TextSendMessage(text="🎤 声で話しかけても大丈夫ですよ", quick_reply=qr),
-        ])
+        flex = _flex_know_menu()
+        flex.quick_reply = qr
+        line_bot_api.reply_message(event.reply_token, flex)
         return
 
     # ④ つながる
@@ -1348,10 +1345,9 @@ def handle_message(event):
             ("昔の話をする",   "昭和の思い出について話しましょう"),
             _QR_BACK,
         ])
-        line_bot_api.reply_message(event.reply_token, [
-            _flex_connect_menu(),
-            TextSendMessage(text="🎤 声で話しかけても大丈夫ですよ", quick_reply=qr),
-        ])
+        flex = _flex_connect_menu()
+        flex.quick_reply = qr
+        line_bot_api.reply_message(event.reply_token, flex)
         return
 
     # ⑤ 友達に紹介
@@ -1362,10 +1358,9 @@ def handle_message(event):
             ("やり方を教える",     "友達に紹介するやり方を教えてください"),
             _QR_BACK,
         ])
-        line_bot_api.reply_message(event.reply_token, [
-            _flex_referral_menu(referral_code),
-            TextSendMessage(text="🎤 声で話しかけても大丈夫ですよ", quick_reply=qr),
-        ])
+        flex = _flex_referral_menu(referral_code)
+        flex.quick_reply = qr
+        line_bot_api.reply_message(event.reply_token, flex)
         return
 
     # 「紹介メッセージを見る」→ コピー用テキストを表示
@@ -1417,10 +1412,8 @@ def handle_message(event):
             _QR_BACK,
         ])
         flex_msg = _flex_ai_direct_menu() if is_paid else _flex_upgrade_menu()
-        line_bot_api.reply_message(event.reply_token, [
-            flex_msg,
-            TextSendMessage(text="🎤 声で話しかけても大丈夫ですよ", quick_reply=qr),
-        ])
+        flex_msg.quick_reply = qr
+        line_bot_api.reply_message(event.reply_token, flex_msg)
         return
 
     # 利用回数チェック（is_paid なら通過、bonus_count → daily_count の順で消費）
