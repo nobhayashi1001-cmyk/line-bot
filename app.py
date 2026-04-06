@@ -2141,6 +2141,12 @@ def liff_get_referral():
 
 # ── ① LIFF FAQ一覧・検索 ─────────────────────────────
 
+_LIFF_FAQ_GENRES = [
+    "健康・病院", "食事・レシピ", "地元情報", "スマホ相談",
+    "趣味・生きがい", "お金・年金", "家の困り事", "季節の話題",
+    "運動", "家族・介護",
+]
+
 _LIFF_FAQ_HTML = """\
 <!DOCTYPE html>
 <html lang="ja">
@@ -2151,85 +2157,208 @@ _LIFF_FAQ_HTML = """\
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:20px;background:#f5f5f5;color:#333;line-height:1.7}}
-.hd{{background:#1565c0;color:#fff;padding:18px 16px;text-align:center}}
-.hd h1{{font-size:24px;font-weight:bold}}
-.search-bar{{background:#fff;padding:12px 16px;display:flex;gap:8px;position:sticky;top:0;z-index:10;box-shadow:0 2px 6px rgba(0,0,0,.1)}}
-.search-bar input{{flex:1;font-size:20px;padding:12px;border:2px solid #ccc;border-radius:10px}}
-.search-bar button{{font-size:18px;padding:12px 18px;background:#1565c0;color:#fff;border:none;border-radius:10px;cursor:pointer;white-space:nowrap}}
-.genres{{display:flex;gap:8px;padding:12px 16px;overflow-x:auto;background:#fff;border-bottom:1px solid #eee}}
-.genres::-webkit-scrollbar{{display:none}}
-.genre-btn{{font-size:17px;padding:8px 16px;border:2px solid #1565c0;background:#fff;color:#1565c0;border-radius:20px;cursor:pointer;white-space:nowrap;flex-shrink:0}}
-.genre-btn.active{{background:#1565c0;color:#fff}}
-.wrap{{padding:12px 16px;max-width:600px;margin:0 auto}}
-.faq-item{{background:#fff;border-radius:12px;margin-bottom:10px;box-shadow:0 1px 6px rgba(0,0,0,.07);overflow:hidden}}
-.faq-q{{padding:16px 48px 16px 16px;font-size:20px;font-weight:bold;cursor:pointer;position:relative;color:#1565c0}}
-.faq-q::after{{content:'▼';position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:16px;color:#888;transition:transform .2s}}
+body{{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:20px;background:#f0f4fa;color:#222;line-height:1.75;padding-bottom:100px}}
+/* ヘッダー */
+.hd{{background:#1565c0;color:#fff;padding:20px 16px 16px;text-align:center}}
+.hd h1{{font-size:26px;font-weight:bold;letter-spacing:.04em}}
+.hd p{{font-size:16px;opacity:.88;margin-top:4px}}
+/* 検索バー */
+.search-wrap{{background:#fff;padding:14px 16px;position:sticky;top:0;z-index:20;box-shadow:0 2px 8px rgba(0,0,0,.12)}}
+.search-inner{{display:flex;gap:10px;max-width:600px;margin:0 auto}}
+.search-inner input{{
+  flex:1;font-size:20px;padding:14px 16px;
+  border:2px solid #1565c0;border-radius:12px;
+  outline:none;color:#222;
+}}
+.search-inner input:focus{{border-color:#0d47a1;box-shadow:0 0 0 3px rgba(21,101,192,.2)}}
+.search-inner button{{
+  font-size:18px;padding:14px 20px;
+  background:#1565c0;color:#fff;border:none;border-radius:12px;
+  cursor:pointer;font-weight:bold;white-space:nowrap;
+}}
+.search-inner button:active{{background:#0d47a1}}
+/* ジャンルタブ */
+.genre-wrap{{background:#fff;border-bottom:2px solid #e0e8f8;overflow-x:auto}}
+.genre-wrap::-webkit-scrollbar{{display:none}}
+.genre-list{{display:flex;padding:12px 14px;gap:10px;min-width:max-content}}
+.g-btn{{
+  font-size:17px;padding:10px 20px;
+  border:2px solid #1565c0;background:#fff;color:#1565c0;
+  border-radius:24px;cursor:pointer;white-space:nowrap;
+  font-weight:bold;transition:background .15s,color .15s;
+}}
+.g-btn.active{{background:#1565c0;color:#fff}}
+.g-btn:active{{opacity:.8}}
+/* 件数 */
+.count-bar{{max-width:600px;margin:12px auto 4px;padding:0 16px;font-size:16px;color:#888}}
+/* FAQリスト */
+.faq-wrap{{max-width:600px;margin:0 auto;padding:0 14px 16px}}
+.faq-item{{
+  background:#fff;border-radius:14px;margin-bottom:12px;
+  box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden;
+}}
+.faq-q{{
+  padding:18px 52px 18px 18px;font-size:20px;font-weight:bold;
+  cursor:pointer;position:relative;color:#1565c0;
+  border-left:5px solid #1565c0;
+  -webkit-tap-highlight-color:rgba(0,0,0,.06);
+}}
+.faq-q::after{{
+  content:'▼';position:absolute;right:18px;top:50%;
+  transform:translateY(-50%);font-size:18px;color:#90a4ae;
+  transition:transform .25s;
+}}
 .faq-item.open .faq-q::after{{transform:translateY(-50%) rotate(180deg)}}
-.faq-a{{display:none;padding:0 16px 16px;font-size:19px;color:#444;border-top:1px solid #eee;line-height:1.8}}
+.faq-item.open .faq-q{{color:#0d47a1;background:#f0f4fa}}
+.faq-a{{
+  display:none;padding:16px 18px 20px;
+  font-size:19px;color:#333;border-top:1px solid #e8eef8;
+  line-height:1.85;white-space:pre-wrap;word-break:break-all;
+}}
 .faq-item.open .faq-a{{display:block}}
-.loader{{text-align:center;padding:48px;color:#888;font-size:20px}}
-.empty{{text-align:center;padding:40px;color:#aaa;font-size:19px}}
-.genre-tag{{display:inline-block;font-size:14px;background:#e3f2fd;color:#1565c0;padding:2px 8px;border-radius:8px;margin-right:6px;font-weight:normal}}
+.genre-badge{{
+  display:inline-block;font-size:13px;
+  background:#e3f2fd;color:#1565c0;
+  padding:2px 9px;border-radius:8px;
+  margin-right:8px;font-weight:normal;vertical-align:middle;
+}}
+/* 状態表示 */
+.loader{{text-align:center;padding:56px 16px;color:#90a4ae;font-size:20px}}
+.loader-spin{{display:inline-block;width:40px;height:40px;border:4px solid #e0e8f8;border-top-color:#1565c0;border-radius:50%;animation:spin .8s linear infinite;margin-bottom:12px}}
+@keyframes spin{{to{{transform:rotate(360deg)}}}}
+.empty{{text-align:center;padding:48px 16px;color:#aaa;font-size:20px}}
+/* AIボタン */
+.ai-btn-wrap{{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:2px solid #e0e8f8;padding:14px 16px;z-index:30}}
+.ai-btn{{
+  display:block;width:100%;max-width:600px;margin:0 auto;
+  font-size:20px;font-weight:bold;padding:16px;
+  background:#ff6f00;color:#fff;border:none;border-radius:14px;
+  cursor:pointer;text-align:center;letter-spacing:.05em;
+}}
+.ai-btn:active{{background:#e65100}}
 </style>
 </head>
 <body>
-<div class="hd"><h1>📖 よくある質問</h1></div>
-<div class="search-bar">
-  <input id="q" type="text" placeholder="キーワードで検索" onkeydown="if(event.key==='Enter')search()">
-  <button onclick="search()">検索</button>
+<div class="hd">
+  <h1>📖 よくある質問</h1>
+  <p>知りたいことを検索、またはジャンルから探せます</p>
 </div>
-<div class="genres" id="genres"><button class="genre-btn active" onclick="setGenre('')" data-g="">すべて</button></div>
-<div class="wrap">
-  <div id="loader" class="loader">読み込み中…</div>
+
+<div class="search-wrap">
+  <div class="search-inner">
+    <input id="q" type="search" placeholder="例：血圧、スマホ設定…" autocomplete="off"
+      oninput="onSearchInput()" onkeydown="if(event.key==='Enter'){{this.blur();load();}}">
+    <button onclick="load()">検索</button>
+  </div>
+</div>
+
+<div class="genre-wrap">
+  <div class="genre-list" id="genreList">
+    <button class="g-btn active" data-g="" onclick="setGenre(this,'')">すべて</button>
+  </div>
+</div>
+
+<div class="count-bar" id="countBar"></div>
+<div class="faq-wrap">
+  <div id="loader" class="loader">
+    <div class="loader-spin"></div><br>読み込み中…
+  </div>
   <div id="list"></div>
 </div>
+
+<div class="ai-btn-wrap">
+  <button class="ai-btn" onclick="askAI()">💬 AIに質問する</button>
+</div>
+
 <script>
-var LIFF_ID="{liff_faq_id}"; var curGenre='';
+var LIFF_ID="{liff_faq_id}";
+var curGenre='';
+var searchTimer=null;
+
 liff.init({{liffId:LIFF_ID}}).catch(function(){{}});
-fetch('/liff/api/faq/genres').then(function(r){{return r.json();}}).then(function(d){{
-  var bar=document.getElementById('genres');
-  (d.genres||[]).forEach(function(g){{
-    var b=document.createElement('button');
-    b.className='genre-btn'; b.textContent=g; b.dataset.g=g;
-    b.onclick=function(){{setGenre(g);}};
-    bar.appendChild(b);
-  }});
+
+// ジャンルボタン追加
+var GENRES={genres_json};
+var bar=document.getElementById('genreList');
+GENRES.forEach(function(g){{
+  var b=document.createElement('button');
+  b.className='g-btn'; b.textContent=g; b.dataset.g=g;
+  b.onclick=function(){{setGenre(b,g);}};
+  bar.appendChild(b);
 }});
-function setGenre(g){{
+
+function setGenre(el,g){{
   curGenre=g;
-  document.querySelectorAll('.genre-btn').forEach(function(b){{
-    b.classList.toggle('active',b.dataset.g===g);
-  }});
+  document.querySelectorAll('.g-btn').forEach(function(b){{b.classList.remove('active');}});
+  el.classList.add('active');
+  // スクロールして見えるように
+  el.scrollIntoView({{inline:'center',behavior:'smooth',block:'nearest'}});
   load();
 }}
-function search(){{load();}}
+
+function onSearchInput(){{
+  clearTimeout(searchTimer);
+  searchTimer=setTimeout(load,400);
+}}
+
 function load(){{
   document.getElementById('loader').style.display='block';
   document.getElementById('list').innerHTML='';
+  document.getElementById('countBar').textContent='';
   var q=encodeURIComponent(document.getElementById('q').value.trim());
   var g=encodeURIComponent(curGenre);
-  fetch('/liff/api/faq?q='+q+'&genre='+g).then(function(r){{return r.json();}}).then(function(d){{
-    document.getElementById('loader').style.display='none';
-    var items=d.items||[];
-    if(!items.length){{document.getElementById('list').innerHTML='<div class="empty">見つかりませんでした</div>';return;}}
-    var html='';
-    items.forEach(function(it,i){{
-      html+='<div class="faq-item" id="fi'+i+'">'
-          +'<div class="faq-q" onclick="toggle('+i+')">'
-          +'<span class="genre-tag">'+esc(it.genre)+'</span>'+esc(it.question)+'</div>'
-          +'<div class="faq-a">'+esc(it.answer)+'</div></div>';
+  fetch('/liff/api/faq?q='+q+'&genre='+g)
+    .then(function(r){{return r.json();}})
+    .then(function(d){{
+      document.getElementById('loader').style.display='none';
+      var items=d.items||[];
+      document.getElementById('countBar').textContent=items.length+'件';
+      if(!items.length){{
+        document.getElementById('list').innerHTML='<div class="empty">見つかりませんでした<br><span style="font-size:16px;color:#bbb">キーワードを変えてみてください</span></div>';
+        return;
+      }}
+      var html='';
+      items.forEach(function(it,i){{
+        html+='<div class="faq-item" id="fi'+i+'">'
+            +'<div class="faq-q" onclick="toggle('+i+')">'
+            +'<span class="genre-badge">'+esc(it.genre)+'</span>'
+            +esc(it.question)+'</div>'
+            +'<div class="faq-a">'+esc(it.answer)+'</div>'
+            +'</div>';
+      }});
+      document.getElementById('list').innerHTML=html;
+    }})
+    .catch(function(){{
+      document.getElementById('loader').style.display='none';
+      document.getElementById('list').innerHTML='<div class="empty">読み込みに失敗しました</div>';
     }});
-    document.getElementById('list').innerHTML=html;
-  }}).catch(function(){{document.getElementById('loader').style.display='none';}});
 }}
+
 function toggle(i){{
   var el=document.getElementById('fi'+i);
-  el.classList.toggle('open');
+  var wasOpen=el.classList.contains('open');
+  // 同じジャンル内のすべてを閉じる（任意: コメントアウトで複数展開可）
+  // document.querySelectorAll('.faq-item.open').forEach(function(e){{e.classList.remove('open');}});
+  if(wasOpen){{el.classList.remove('open');}}
+  else{{
+    el.classList.add('open');
+    // 少しスクロールして見やすく
+    setTimeout(function(){{el.scrollIntoView({{behavior:'smooth',block:'nearest'}});}},200);
+  }}
 }}
+
 function esc(s){{
   return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\\n/g,'<br>');
 }}
+
+function askAI(){{
+  try{{
+    liff.sendMessages([{{type:'text',text:'質問があります'}}])
+      .then(function(){{liff.closeWindow();}})
+      .catch(function(){{liff.closeWindow();}});
+  }}catch(e){{liff.closeWindow();}}
+}}
+
 load();
 </script>
 </body></html>
@@ -2238,7 +2367,9 @@ load();
 
 @app.route("/liff/faq", methods=["GET"])
 def liff_faq():
-    html = _LIFF_FAQ_HTML.format(liff_faq_id=LIFF_FAQ_ID)
+    import json as _json
+    genres_json = _json.dumps(_LIFF_FAQ_GENRES, ensure_ascii=False)
+    html = _LIFF_FAQ_HTML.format(liff_faq_id=LIFF_FAQ_ID, genres_json=genres_json)
     return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
 
@@ -2246,7 +2377,9 @@ def liff_faq():
 def liff_api_faq_genres():
     try:
         result = get_supabase().table("faq").select("genre").execute()
-        genres = sorted({r["genre"] for r in (result.data or []) if r.get("genre")})
+        db_genres = {r["genre"] for r in (result.data or []) if r.get("genre")}
+        # 固定順序を優先し、DB にしかないジャンルを末尾に追加
+        genres = _LIFF_FAQ_GENRES + sorted(db_genres - set(_LIFF_FAQ_GENRES))
         return jsonify({"genres": genres})
     except Exception as e:
         logging.exception("liff_api_faq_genres error: %s", e)
@@ -2262,8 +2395,9 @@ def liff_api_faq():
         if genre:
             query = query.eq("genre", genre)
         if q:
-            query = query.ilike("question", f"%{q}%")
-        result = query.order("genre").limit(60).execute()
+            # 質問・回答の両方をキーワード検索（OR）
+            query = query.or_(f"question.ilike.%{q}%,answer.ilike.%{q}%")
+        result = query.order("genre").limit(100).execute()
         return jsonify({"items": result.data or []})
     except Exception as e:
         logging.exception("liff_api_faq error: %s", e)
