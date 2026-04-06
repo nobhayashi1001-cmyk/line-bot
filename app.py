@@ -646,13 +646,17 @@ def _save_user(user_id: str, state: dict) -> None:
         referral_code = _generate_referral_code()
 
     # prefecture + city を region として保存（例: 神奈川県藤沢市）
-    region = state.get("prefecture", "") + state.get("city", state.get("region", ""))
+    pref   = state.get("prefecture", "")
+    city   = state.get("city", "")
+    region = pref + city if pref else state.get("region", "")
 
     get_supabase().table("users").upsert(
         {
             "line_user_id": user_id,
             "name": state.get("name"),  # name は任意
             "region": region,
+            "prefecture": pref or None,
+            "city": city or None,
             "birthdate": state.get("birthdate"),
             "referral_code": referral_code,
         },
@@ -685,7 +689,7 @@ def _get_user(user_id: str) -> dict | None:
         return user_cache[user_id]
     result = (
         get_supabase().table("users")
-        .select("name, region")
+        .select("name, region, prefecture, city")
         .eq("line_user_id", user_id)
         .limit(1)
         .execute()
@@ -693,6 +697,25 @@ def _get_user(user_id: str) -> dict | None:
     user = result.data[0] if result.data else None
     user_cache[user_id] = user
     return user
+
+
+def _user_location(user_info: dict | None) -> tuple[str, str]:
+    """user_info から (prefecture, city) を返す。
+    prefecture/city カラムがなければ region を都道府県パターンで分割する。
+    未登録 or 不明の場合は ('ALL', 'ALL') を返す。
+    """
+    if not user_info:
+        return "ALL", "ALL"
+    pref = user_info.get("prefecture") or ""
+    city = user_info.get("city") or ""
+    if pref and city:
+        return pref, city
+    # 旧データ: region="神奈川県藤沢市" から分割
+    region = user_info.get("region") or ""
+    m = re.match(r'^(.+?[都道府県])(.+)$', region)
+    if m:
+        return m.group(1), m.group(2)
+    return "ALL", "ALL"
 
 
 # ジャンルキーワード → DB の genre 列と対応
@@ -941,37 +964,101 @@ def _detect_faq_genre(message: str) -> str | None:
     return next((v for k, v in _FAQ_GENRE_MAP.items() if k in message), None)
 
 
-def _search_faq(message: str) -> str:
+def _faq_priority_search(
+    words: list[str],
+    answer_types: list[str] | None,
+    select_cols: str,
+    prefecture: str,
+    city: str,
+    limit: int = 3,
+) -> list[dict]:
+    """city → prefecture(ALL) → 全国(ALL/ALL) の優先順位でFAQ検索する。
+
+    各ステップで words によるキーワード検索を行い、
+    ヒットした時点でその結果を返す。全滅時は空リストを返す。
+    """
+    sb = get_supabase()
+
+    def _search(pref_val: str, city_val: str) -> list[dict]:
+        seen: set[str] = set()
+        rows: list[dict] = []
+        for word in words:
+            q = sb.table("faq").select(select_cols).ilike("question", f"%{word}%")
+            if answer_types:
+                q = q.in_("answer_type", answer_types)
+            q = q.eq("prefecture", pref_val).eq("city", city_val).limit(limit)
+            for row in (q.execute().data or []):
+                if row["question"] not in seen:
+                    seen.add(row["question"])
+                    rows.append(row)
+        return rows
+
+    # 1. ユーザーの市区町村固有
+    if city and city != "ALL":
+        rows = _search(prefecture, city)
+        if rows:
+            return rows
+
+    # 2. 都道府県レベル（city='ALL'）
+    if prefecture and prefecture != "ALL":
+        rows = _search(prefecture, "ALL")
+        if rows:
+            return rows
+
+    # 3. 全国共通
+    return _search("ALL", "ALL")
+
+
+def _faq_genre_search(
+    genre: str,
+    answer_types: list[str] | None,
+    select_cols: str,
+    prefecture: str,
+    city: str,
+    limit: int = 3,
+) -> list[dict]:
+    """ジャンル指定でも city → prefecture → ALL の優先順位で検索する。"""
+    sb = get_supabase()
+
+    def _search(pref_val: str, city_val: str) -> list[dict]:
+        q = sb.table("faq").select(select_cols).eq("genre", genre)
+        if answer_types:
+            q = q.in_("answer_type", answer_types)
+        q = q.eq("prefecture", pref_val).eq("city", city_val).limit(limit)
+        return q.execute().data or []
+
+    if city and city != "ALL":
+        rows = _search(prefecture, city)
+        if rows:
+            return rows
+    if prefecture and prefecture != "ALL":
+        rows = _search(prefecture, "ALL")
+        if rows:
+            return rows
+    return _search("ALL", "ALL")
+
+
+def _search_faq(message: str, user_info: dict | None = None) -> str:
     """FAQ テーブルをキーワード検索し、text タイプのみ Claude コンテキストとして返す。
 
     検索優先順位:
-    1. メッセージ中の単語で question を部分一致検索
-    2. ヒットなし → ジャンル検索にフォールバック
+    1. ユーザーの市区町村固有 FAQ
+    2. 都道府県レベル FAQ
+    3. 全国共通 FAQ
+    4. ヒットなし → ジャンル検索にフォールバック（同優先順位）
     """
     try:
-        # 2文字以上の単語を最大5語抽出してquestion検索
         words = [w for w in re.split(r'[　\s。、？！ー・]+', message) if len(w) >= 2][:5]
+        pref, city = _user_location(user_info)
+        cols = "question, answer, answer_type"
 
-        results: list[dict] = []
-        seen_q: set[str] = set()
-
-        for word in words:
-            r = get_supabase().table("faq").select(
-                "question, answer, answer_type"
-            ).ilike("question", f"%{word}%").limit(3).execute()
-            for row in (r.data or []):
-                if row["question"] not in seen_q:
-                    seen_q.add(row["question"])
-                    results.append(row)
+        results = _faq_priority_search(words, None, cols, pref, city)
 
         # キーワード検索でヒットしない場合はジャンルで補完
         if not results:
             genre = _detect_faq_genre(message)
             if genre:
-                r = get_supabase().table("faq").select(
-                    "question, answer, answer_type"
-                ).eq("genre", genre).limit(3).execute()
-                results = r.data or []
+                results = _faq_genre_search(genre, None, cols, pref, city)
 
         # text タイプのみ Claude コンテキストに使う（button/carousel は直接返信で処理）
         text_items = [x for x in results if x.get("answer_type", "text") == "text"][:3]
@@ -989,27 +1076,18 @@ def _search_faq(message: str) -> str:
         return ""
 
 
-def _faq_direct_reply(message: str) -> TextSendMessage | TemplateSendMessage | None:
+def _faq_direct_reply(message: str, user_info: dict | None = None) -> TextSendMessage | TemplateSendMessage | None:
     """FAQ を検索し、answer_type が button/carousel なら LINE メッセージを返す。
     text タイプまたは未ヒットの場合は None を返す（Claude 経由で処理）。
+
+    検索優先順位: ユーザーの市 → 都道府県 → 全国共通
     """
     try:
         words = [w for w in re.split(r'[　\s。、？！ー・]+', message) if len(w) >= 2][:5]
+        pref, city = _user_location(user_info)
+        cols = "question, answer, answer_type, options"
 
-        rows: list[dict] = []
-        seen_q: set[str] = set()
-
-        for word in words:
-            # button/carousel タイプを優先して取得（text タイプが limit を埋めるのを防ぐ）
-            r = get_supabase().table("faq").select(
-                "question, answer, answer_type, options"
-            ).ilike("question", f"%{word}%").in_(
-                "answer_type", ["button", "carousel"]
-            ).limit(3).execute()
-            for row in (r.data or []):
-                if row["question"] not in seen_q:
-                    seen_q.add(row["question"])
-                    rows.append(row)
+        rows = _faq_priority_search(words, ["button", "carousel"], cols, pref, city)
 
         for row in rows:
             atype = row.get("answer_type", "text")
@@ -1103,8 +1181,8 @@ def get_claude_reply(user_id: str, user_message: str, user_info: dict | None = N
         if restaurant_context:
             system += f"\n\n{restaurant_context}\n上記の情報を参考にして答えてください。"
 
-    # FAQ RAG: 全ユーザー対象
-    faq_context = _search_faq(user_message)
+    # FAQ RAG: 全ユーザー対象（ユーザーの地域を優先して検索）
+    faq_context = _search_faq(user_message, user_info)
     if faq_context:
         system += f"\n\n{faq_context}\n上記のFAQ情報を参考にして答えてください。"
 
@@ -1376,7 +1454,7 @@ def handle_message(event):
 
     # FAQ直接返信チェック（button/carousel タイプはClaudeを呼ばず即時返信）
     try:
-        faq_msg = _faq_direct_reply(user_message)
+        faq_msg = _faq_direct_reply(user_message, user_info)
         if faq_msg is not None:
             line_bot_api.reply_message(
                 event.reply_token,
