@@ -24,6 +24,7 @@ from linebot.models import (
 import httpx
 import anthropic
 import openai
+import stripe
 from supabase import create_client
 
 app = Flask(__name__)
@@ -44,8 +45,17 @@ SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 RICH_MENU_FREE_ID = os.environ.get("RICH_MENU_FREE_ID", "")
 RICH_MENU_PAID_ID = os.environ.get("RICH_MENU_PAID_ID", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-LIFF_ID        = os.environ.get("LIFF_ID", "")
-LIFF_INVITE_ID = os.environ.get("LIFF_INVITE_ID", LIFF_ID)  # 未設定時はマイページと共用
+LIFF_ID          = os.environ.get("LIFF_ID", "")
+LIFF_INVITE_ID   = os.environ.get("LIFF_INVITE_ID",  LIFF_ID)
+LIFF_FAQ_ID      = os.environ.get("LIFF_FAQ_ID",     LIFF_ID)
+LIFF_SEARCH_ID   = os.environ.get("LIFF_SEARCH_ID",  LIFF_ID)
+STRIPE_SECRET_KEY      = os.environ.get("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET  = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+STRIPE_PRICE_ID        = os.environ.get("STRIPE_PRICE_ID", "")
+STRIPE_SUCCESS_URL     = os.environ.get("STRIPE_SUCCESS_URL", "https://line-bot-jq43.onrender.com/stripe/success")
+STRIPE_CANCEL_URL      = os.environ.get("STRIPE_CANCEL_URL",  "https://line-bot-jq43.onrender.com/stripe/cancel")
+if STRIPE_SECRET_KEY:
+    stripe.api_key = STRIPE_SECRET_KEY
 
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
@@ -2127,6 +2137,473 @@ def liff_get_referral():
     except Exception as e:
         logging.exception("liff_get_referral error: %s", e)
         return jsonify({"error": "server error"}), 500
+
+
+# ── ① LIFF FAQ一覧・検索 ─────────────────────────────
+
+_LIFF_FAQ_HTML = """\
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=yes">
+<title>よくある質問</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:20px;background:#f5f5f5;color:#333;line-height:1.7}}
+.hd{{background:#1565c0;color:#fff;padding:18px 16px;text-align:center}}
+.hd h1{{font-size:24px;font-weight:bold}}
+.search-bar{{background:#fff;padding:12px 16px;display:flex;gap:8px;position:sticky;top:0;z-index:10;box-shadow:0 2px 6px rgba(0,0,0,.1)}}
+.search-bar input{{flex:1;font-size:20px;padding:12px;border:2px solid #ccc;border-radius:10px}}
+.search-bar button{{font-size:18px;padding:12px 18px;background:#1565c0;color:#fff;border:none;border-radius:10px;cursor:pointer;white-space:nowrap}}
+.genres{{display:flex;gap:8px;padding:12px 16px;overflow-x:auto;background:#fff;border-bottom:1px solid #eee}}
+.genres::-webkit-scrollbar{{display:none}}
+.genre-btn{{font-size:17px;padding:8px 16px;border:2px solid #1565c0;background:#fff;color:#1565c0;border-radius:20px;cursor:pointer;white-space:nowrap;flex-shrink:0}}
+.genre-btn.active{{background:#1565c0;color:#fff}}
+.wrap{{padding:12px 16px;max-width:600px;margin:0 auto}}
+.faq-item{{background:#fff;border-radius:12px;margin-bottom:10px;box-shadow:0 1px 6px rgba(0,0,0,.07);overflow:hidden}}
+.faq-q{{padding:16px 48px 16px 16px;font-size:20px;font-weight:bold;cursor:pointer;position:relative;color:#1565c0}}
+.faq-q::after{{content:'▼';position:absolute;right:16px;top:50%;transform:translateY(-50%);font-size:16px;color:#888;transition:transform .2s}}
+.faq-item.open .faq-q::after{{transform:translateY(-50%) rotate(180deg)}}
+.faq-a{{display:none;padding:0 16px 16px;font-size:19px;color:#444;border-top:1px solid #eee;line-height:1.8}}
+.faq-item.open .faq-a{{display:block}}
+.loader{{text-align:center;padding:48px;color:#888;font-size:20px}}
+.empty{{text-align:center;padding:40px;color:#aaa;font-size:19px}}
+.genre-tag{{display:inline-block;font-size:14px;background:#e3f2fd;color:#1565c0;padding:2px 8px;border-radius:8px;margin-right:6px;font-weight:normal}}
+</style>
+</head>
+<body>
+<div class="hd"><h1>📖 よくある質問</h1></div>
+<div class="search-bar">
+  <input id="q" type="text" placeholder="キーワードで検索" onkeydown="if(event.key==='Enter')search()">
+  <button onclick="search()">検索</button>
+</div>
+<div class="genres" id="genres"><button class="genre-btn active" onclick="setGenre('')" data-g="">すべて</button></div>
+<div class="wrap">
+  <div id="loader" class="loader">読み込み中…</div>
+  <div id="list"></div>
+</div>
+<script>
+var LIFF_ID="{liff_faq_id}"; var curGenre='';
+liff.init({{liffId:LIFF_ID}}).catch(function(){{}});
+fetch('/liff/api/faq/genres').then(function(r){{return r.json();}}).then(function(d){{
+  var bar=document.getElementById('genres');
+  (d.genres||[]).forEach(function(g){{
+    var b=document.createElement('button');
+    b.className='genre-btn'; b.textContent=g; b.dataset.g=g;
+    b.onclick=function(){{setGenre(g);}};
+    bar.appendChild(b);
+  }});
+}});
+function setGenre(g){{
+  curGenre=g;
+  document.querySelectorAll('.genre-btn').forEach(function(b){{
+    b.classList.toggle('active',b.dataset.g===g);
+  }});
+  load();
+}}
+function search(){{load();}}
+function load(){{
+  document.getElementById('loader').style.display='block';
+  document.getElementById('list').innerHTML='';
+  var q=encodeURIComponent(document.getElementById('q').value.trim());
+  var g=encodeURIComponent(curGenre);
+  fetch('/liff/api/faq?q='+q+'&genre='+g).then(function(r){{return r.json();}}).then(function(d){{
+    document.getElementById('loader').style.display='none';
+    var items=d.items||[];
+    if(!items.length){{document.getElementById('list').innerHTML='<div class="empty">見つかりませんでした</div>';return;}}
+    var html='';
+    items.forEach(function(it,i){{
+      html+='<div class="faq-item" id="fi'+i+'">'
+          +'<div class="faq-q" onclick="toggle('+i+')">'
+          +'<span class="genre-tag">'+esc(it.genre)+'</span>'+esc(it.question)+'</div>'
+          +'<div class="faq-a">'+esc(it.answer)+'</div></div>';
+    }});
+    document.getElementById('list').innerHTML=html;
+  }}).catch(function(){{document.getElementById('loader').style.display='none';}});
+}}
+function toggle(i){{
+  var el=document.getElementById('fi'+i);
+  el.classList.toggle('open');
+}}
+function esc(s){{
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\\n/g,'<br>');
+}}
+load();
+</script>
+</body></html>
+"""
+
+
+@app.route("/liff/faq", methods=["GET"])
+def liff_faq():
+    html = _LIFF_FAQ_HTML.format(liff_faq_id=LIFF_FAQ_ID)
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+@app.route("/liff/api/faq/genres", methods=["GET"])
+def liff_api_faq_genres():
+    try:
+        result = get_supabase().table("faq").select("genre").execute()
+        genres = sorted({r["genre"] for r in (result.data or []) if r.get("genre")})
+        return jsonify({"genres": genres})
+    except Exception as e:
+        logging.exception("liff_api_faq_genres error: %s", e)
+        return jsonify({"error": "server error"}), 500
+
+
+@app.route("/liff/api/faq", methods=["GET"])
+def liff_api_faq():
+    genre = request.args.get("genre", "").strip()
+    q     = request.args.get("q", "").strip()
+    try:
+        query = get_supabase().table("faq").select("genre, question, answer")
+        if genre:
+            query = query.eq("genre", genre)
+        if q:
+            query = query.ilike("question", f"%{q}%")
+        result = query.order("genre").limit(60).execute()
+        return jsonify({"items": result.data or []})
+    except Exception as e:
+        logging.exception("liff_api_faq error: %s", e)
+        return jsonify({"error": "server error"}), 500
+
+
+# ── ② LIFF 地図・病院・お店検索 ──────────────────────
+
+_LIFF_SEARCH_HTML = """\
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=yes">
+<title>お店・病院を探す</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:20px;background:#f5f5f5;color:#333;line-height:1.7}}
+.hd{{background:#2e7d32;color:#fff;padding:18px 16px;text-align:center}}
+.hd h1{{font-size:24px;font-weight:bold}}
+.tabs{{display:flex;background:#fff;border-bottom:3px solid #2e7d32}}
+.tab{{flex:1;padding:14px;text-align:center;font-size:19px;cursor:pointer;color:#888;font-weight:bold}}
+.tab.active{{color:#2e7d32;border-bottom:3px solid #2e7d32;margin-bottom:-3px}}
+.search-bar{{background:#fff;padding:12px 16px;display:flex;gap:8px;box-shadow:0 2px 6px rgba(0,0,0,.08)}}
+.search-bar input{{flex:1;font-size:20px;padding:12px;border:2px solid #ccc;border-radius:10px}}
+.search-bar button{{font-size:18px;padding:12px 18px;background:#2e7d32;color:#fff;border:none;border-radius:10px;cursor:pointer}}
+.wrap{{padding:12px 16px;max-width:600px;margin:0 auto}}
+.card{{background:#fff;border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 1px 6px rgba(0,0,0,.08)}}
+.card-name{{font-size:22px;font-weight:bold;color:#2e7d32;margin-bottom:6px}}
+.card-info{{font-size:18px;color:#555;margin-bottom:4px}}
+.card-info span{{color:#888;font-size:16px;margin-right:6px}}
+.card-btns{{display:flex;gap:8px;margin-top:10px}}
+.cbtn{{flex:1;padding:10px;font-size:17px;border-radius:8px;border:none;cursor:pointer;text-align:center;text-decoration:none;display:block}}
+.cbtn-map{{background:#e8f5e9;color:#2e7d32;border:2px solid #2e7d32}}
+.cbtn-call{{background:#e3f2fd;color:#1565c0;border:2px solid #1565c0}}
+.loader{{text-align:center;padding:48px;color:#888;font-size:20px}}
+.empty{{text-align:center;padding:40px;color:#aaa;font-size:19px}}
+.hospital-links{{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}}
+.hlink{{background:#fff;border:2px solid #2e7d32;border-radius:12px;padding:16px;text-align:center;text-decoration:none;color:#2e7d32;font-size:18px;font-weight:bold;display:block}}
+.hlink:active{{background:#e8f5e9}}
+.stars{{color:#f57c00;font-size:18px}}
+</style>
+</head>
+<body>
+<div class="hd"><h1>🔍 お店・病院を探す</h1></div>
+<div class="tabs">
+  <div class="tab active" onclick="setTab('restaurant')" id="tab-restaurant">🍽️ お店</div>
+  <div class="tab"        onclick="setTab('hospital')"   id="tab-hospital">🏥 病院・施設</div>
+</div>
+<div class="search-bar" id="search-bar">
+  <input id="q" type="text" placeholder="ジャンル・エリアで検索" onkeydown="if(event.key==='Enter')load()">
+  <button onclick="load()">検索</button>
+</div>
+<div class="wrap">
+  <div id="loader" class="loader" style="display:none"></div>
+  <div id="list"></div>
+</div>
+<script>
+var LIFF_ID="{liff_search_id}"; var curTab='restaurant';
+liff.init({{liffId:LIFF_ID}}).catch(function(){{}});
+function setTab(t){{
+  curTab=t;
+  ['restaurant','hospital'].forEach(function(x){{
+    document.getElementById('tab-'+x).classList.toggle('active',x===t);
+  }});
+  document.getElementById('q').value='';
+  if(t==='hospital'){{showHospitalLinks();}}else{{load();}}
+}}
+function load(){{
+  document.getElementById('loader').style.display='block';
+  document.getElementById('list').innerHTML='';
+  var q=encodeURIComponent(document.getElementById('q').value.trim());
+  fetch('/liff/api/spots?type='+curTab+'&q='+q).then(function(r){{return r.json();}}).then(function(d){{
+    document.getElementById('loader').style.display='none';
+    var items=d.items||[];
+    if(!items.length){{document.getElementById('list').innerHTML='<div class="empty">見つかりませんでした</div>';return;}}
+    var html='';
+    items.forEach(function(it){{
+      var stars='';
+      if(it.rating){{for(var i=0;i<Math.round(it.rating);i++)stars+='★';}}
+      var mapQ=encodeURIComponent((it.name||'')+'　'+(it.address||''));
+      html+='<div class="card">'
+          +'<div class="card-name">'+esc(it.name)+'</div>'
+          +(it.genre?'<div class="card-info"><span>ジャンル</span>'+esc(it.genre)+'</div>':'')
+          +(it.area?'<div class="card-info"><span>エリア</span>'+esc(it.area)+'</div>':'')
+          +(it.address?'<div class="card-info"><span>住所</span>'+esc(it.address)+'</div>':'')
+          +(stars?'<div class="stars">'+stars+'</div>':'')
+          +'<div class="card-btns">'
+          +'<a class="cbtn cbtn-map" href="https://maps.google.com/?q='+mapQ+'" target="_blank">🗺️ 地図</a>'
+          +(it.phone?'<a class="cbtn cbtn-call" href="tel:'+esc(it.phone)+'">📞 電話</a>':'')
+          +'</div></div>';
+    }});
+    document.getElementById('list').innerHTML=html;
+  }}).catch(function(){{document.getElementById('loader').style.display='none';}});
+}}
+function showHospitalLinks(){{
+  var area="{area}";
+  var links=[
+    ['内科・かかりつけ医','病院 内科 '+area],['整形外科','整形外科 '+area],
+    ['歯科','歯科 '+area],['皮膚科','皮膚科 '+area],
+    ['眼科','眼科 '+area],['救急・夜間','救急病院 '+area],
+    ['市役所','市役所 '+area],['図書館','図書館 '+area],
+  ];
+  var html='<div class="card"><div class="card-name">近くの病院・施設をGoogleマップで探す</div><div class="hospital-links">';
+  links.forEach(function(l){{
+    html+='<a class="hlink" href="https://maps.google.com/?q='+encodeURIComponent(l[1])+'" target="_blank">'+l[0]+'</a>';
+  }});
+  html+='</div></div>';
+  document.getElementById('loader').style.display='none';
+  document.getElementById('list').innerHTML=html;
+}}
+function esc(s){{return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}}
+load();
+</script>
+</body></html>
+"""
+
+
+@app.route("/liff/search", methods=["GET"])
+def liff_search():
+    area = _AREA_KEYWORDS[0] if _AREA_KEYWORDS else "藤沢"
+    html = _LIFF_SEARCH_HTML.format(liff_search_id=LIFF_SEARCH_ID, area=area)
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+@app.route("/liff/api/spots", methods=["GET"])
+def liff_api_spots():
+    spot_type = request.args.get("type", "restaurant")
+    q = request.args.get("q", "").strip()
+    try:
+        if spot_type == "restaurant":
+            query = get_supabase().table("restaurants").select(
+                "name, genre, area, address, phone, rating"
+            )
+            if q:
+                query = query.or_(f"name.ilike.%{q}%,genre.ilike.%{q}%,area.ilike.%{q}%")
+            result = query.order("rating", desc=True).limit(20).execute()
+            return jsonify({"items": result.data or []})
+        return jsonify({"items": []})
+    except Exception as e:
+        logging.exception("liff_api_spots error: %s", e)
+        return jsonify({"error": "server error"}), 500
+
+
+# ── ③ 特商法ページ・利用規約 ────────────────────────
+
+_LEGAL_CSS = """
+body{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:18px;
+  background:#fff;color:#333;line-height:1.8;max-width:700px;margin:0 auto;padding:20px}
+h1{font-size:22px;border-bottom:3px solid #1565c0;padding-bottom:10px;margin-bottom:24px;color:#1565c0}
+h2{font-size:20px;margin:24px 0 8px;color:#333}
+table{width:100%;border-collapse:collapse;margin-bottom:24px}
+td{padding:12px;border:1px solid #ddd;font-size:18px;vertical-align:top}
+td:first-child{background:#f5f7fa;font-weight:bold;width:35%;white-space:nowrap}
+p{margin-bottom:16px}
+ul{margin:0 0 16px 24px}
+li{margin-bottom:8px}
+.note{background:#fff9e6;border:1px solid #f0c060;border-radius:8px;padding:14px;font-size:17px;margin-top:24px}
+"""
+
+_TOKUSHOUHO_HTML = f"""<!DOCTYPE html>
+<html lang="ja"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>特定商取引法に基づく表示</title>
+<style>{_LEGAL_CSS}</style>
+</head><body>
+<h1>特定商取引法に基づく表示</h1>
+<table>
+<tr><td>販売事業者名</td><td>【会社名・屋号】</td></tr>
+<tr><td>代表者名</td><td>【代表者氏名】</td></tr>
+<tr><td>所在地</td><td>〒【郵便番号】<br>【都道府県・市区町村・番地】</td></tr>
+<tr><td>電話番号</td><td>【電話番号】<br>（受付時間：平日10:00〜18:00）</td></tr>
+<tr><td>メールアドレス</td><td>【メールアドレス】</td></tr>
+<tr><td>サービス名</td><td>地元くらしの御用聞き</td></tr>
+<tr><td>サービス内容</td><td>AIによる生活相談・地域情報提供サービス（LINEアプリ）</td></tr>
+<tr><td>料金</td><td>有料プラン：月額【金額】円（税込）<br>無料プランあり（1日5回まで）</td></tr>
+<tr><td>支払方法</td><td>クレジットカード（Stripe決済）</td></tr>
+<tr><td>支払時期</td><td>お申し込み時に即時決済</td></tr>
+<tr><td>サービス提供時期</td><td>決済完了後、即時ご利用いただけます</td></tr>
+<tr><td>返金・キャンセル</td><td>月額料金のご返金はいたしかねます。<br>解約はいつでも可能です。</td></tr>
+<tr><td>動作環境</td><td>LINEアプリ（iOS / Android）最新版</td></tr>
+</table>
+<div class="note">※ 【】内の情報は事業者が設定してください</div>
+</body></html>
+"""
+
+_TERMS_HTML = f"""<!DOCTYPE html>
+<html lang="ja"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>利用規約</title>
+<style>{_LEGAL_CSS}</style>
+</head><body>
+<h1>利用規約</h1>
+<p>本利用規約（以下「本規約」）は、【会社名】（以下「当社」）が提供するLINEサービス「地元くらしの御用聞き」（以下「本サービス」）の利用条件を定めるものです。</p>
+
+<h2>第1条（適用）</h2>
+<p>本規約は、ユーザーと当社との間の本サービスの利用に関わる一切の関係に適用されます。</p>
+
+<h2>第2条（利用登録）</h2>
+<p>登録希望者が当社の定める方法によって利用登録を申請し、当社がこれを承認することによって、利用登録が完了するものとします。</p>
+
+<h2>第3条（料金）</h2>
+<ul>
+<li>無料プランは1日5回まで本サービスをご利用いただけます。</li>
+<li>有料プランは月額【金額】円（税込）にて無制限でご利用いただけます。</li>
+<li>料金はStripeを通じてクレジットカードにて決済されます。</li>
+</ul>
+
+<h2>第4条（禁止事項）</h2>
+<p>ユーザーは以下の行為を行ってはなりません。</p>
+<ul>
+<li>法令または公序良俗に違反する行為</li>
+<li>犯罪行為に関連する行為</li>
+<li>当社のサービスの運営を妨害する行為</li>
+<li>他のユーザーまたは第三者を誹謗中傷する行為</li>
+<li>本サービスを商業目的で無断利用する行為</li>
+</ul>
+
+<h2>第5条（免責事項）</h2>
+<p>当社は、本サービスが提供するAI回答の正確性・完全性を保証しません。医療・法律・金融等の専門的判断については、必ず専門家にご相談ください。</p>
+
+<h2>第6条（個人情報）</h2>
+<p>当社は、ユーザーの個人情報を別途定めるプライバシーポリシーに従い適切に取り扱います。</p>
+
+<h2>第7条（規約変更）</h2>
+<p>当社は、必要と判断した場合には、ユーザーへの事前通知をもって本規約を変更できるものとします。</p>
+
+<h2>第8条（準拠法・管轄）</h2>
+<p>本規約の解釈は日本法に準拠し、本サービスに関する紛争は当社所在地を管轄する裁判所を第一審の専属的合意管轄とします。</p>
+
+<p style="text-align:right;color:#888;font-size:16px">制定日：【制定日】</p>
+<div class="note">※ 【】内の情報は事業者が設定してください</div>
+</body></html>
+"""
+
+
+@app.route("/tokushouho", methods=["GET"])
+def tokushouho():
+    return _TOKUSHOUHO_HTML, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+@app.route("/terms", methods=["GET"])
+def terms():
+    return _TERMS_HTML, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+# ── ④ Stripe 決済 ────────────────────────────────────
+
+@app.route("/stripe/checkout", methods=["GET"])
+def stripe_checkout():
+    """Stripe Checkout セッションを作成してリダイレクト。
+    クエリパラメータ: line_user_id=xxx
+    """
+    user_id = request.args.get("line_user_id", "").strip()
+    if not user_id:
+        return "line_user_id required", 400
+    if not STRIPE_SECRET_KEY or not STRIPE_PRICE_ID:
+        return "Stripe not configured", 503
+    try:
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{"price": STRIPE_PRICE_ID, "quantity": 1}],
+            mode="subscription",
+            client_reference_id=user_id,
+            success_url=STRIPE_SUCCESS_URL + "?session_id={CHECKOUT_SESSION_ID}",
+            cancel_url=STRIPE_CANCEL_URL,
+        )
+        from flask import redirect
+        return redirect(session.url, code=303)
+    except Exception as e:
+        logging.exception("stripe_checkout error: %s", e)
+        return "決済ページの作成に失敗しました。", 500
+
+
+@app.route("/stripe/webhook", methods=["POST"])
+def stripe_webhook():
+    """Stripe からのイベントを受け取り、支払い完了時に is_paid を更新する。"""
+    payload    = request.get_data()
+    sig_header = request.headers.get("Stripe-Signature", "")
+    if not STRIPE_WEBHOOK_SECRET:
+        return "Webhook secret not configured", 503
+    try:
+        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+    except ValueError:
+        return "Invalid payload", 400
+    except stripe.error.SignatureVerificationError:
+        return "Invalid signature", 400
+
+    if event["type"] in ("checkout.session.completed", "invoice.paid"):
+        obj     = event["data"]["object"]
+        uid     = obj.get("client_reference_id") or obj.get("metadata", {}).get("line_user_id")
+        if uid:
+            try:
+                get_supabase().table("users").update({"is_paid": True}).eq("line_user_id", uid).execute()
+                user_cache.pop(uid, None)
+                logging.error("Stripe: user %s upgraded to paid (event=%s)", uid, event["type"])
+            except Exception as e:
+                logging.exception("Stripe: DB update failed for %s: %s", uid, e)
+
+    if event["type"] in ("customer.subscription.deleted", "invoice.payment_failed"):
+        obj = event["data"]["object"]
+        uid = obj.get("metadata", {}).get("line_user_id")
+        if uid:
+            try:
+                get_supabase().table("users").update({"is_paid": False}).eq("line_user_id", uid).execute()
+                user_cache.pop(uid, None)
+                logging.error("Stripe: user %s downgraded to free (event=%s)", uid, event["type"])
+            except Exception as e:
+                logging.exception("Stripe: DB update failed for %s: %s", uid, e)
+
+    return "OK", 200
+
+
+@app.route("/stripe/success", methods=["GET"])
+def stripe_success():
+    return """<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>お申し込み完了</title>
+<style>body{{font-family:'Hiragino Sans',sans-serif;text-align:center;padding:60px 20px;background:#e8f5e9}}
+h1{{color:#2e7d32;font-size:26px;margin-bottom:16px}}p{{font-size:20px;color:#555;line-height:1.8}}</style>
+</head><body>
+<h1>🎉 お申し込みありがとうございます！</h1>
+<p>有料会員への登録が完了しました。<br>LINEに戻って引き続きご利用ください。</p>
+</body></html>""", 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+@app.route("/stripe/cancel", methods=["GET"])
+def stripe_cancel():
+    return """<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>キャンセル</title>
+<style>body{{font-family:'Hiragino Sans',sans-serif;text-align:center;padding:60px 20px;background:#fff}}
+h1{{color:#555;font-size:24px;margin-bottom:16px}}p{{font-size:20px;color:#888;line-height:1.8}}</style>
+</head><body>
+<h1>お申し込みをキャンセルしました</h1>
+<p>またいつでもお気軽にどうぞ。<br>LINEに戻ってご利用ください。</p>
+</body></html>""", 200, {"Content-Type": "text/html; charset=utf-8"}
 
 
 # ── ヘルスチェック ────────────────────────────────────
