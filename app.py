@@ -23,6 +23,7 @@ from linebot.models import (
 )
 import httpx
 import anthropic
+import openai
 from supabase import create_client
 
 app = Flask(__name__)
@@ -42,9 +43,11 @@ SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
 RICH_MENU_FREE_ID = os.environ.get("RICH_MENU_FREE_ID", "")
 RICH_MENU_PAID_ID = os.environ.get("RICH_MENU_PAID_ID", "")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
+openai_client = openai.OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 
 def _mark_as_read(token: str) -> None:
@@ -1034,6 +1037,29 @@ def _faq_genre_search(
     return _search("ALL", "ALL")
 
 
+def _vector_search_faq(message: str, threshold: float = 0.75, limit: int = 3) -> list[dict]:
+    """OpenAI text-embedding-3-small でベクトル検索して FAQ を返す。
+    openai_client が未設定またはエラー時は空リストを返す。
+    """
+    if not openai_client:
+        return []
+    try:
+        resp = openai_client.embeddings.create(
+            model="text-embedding-3-small",
+            input=message,
+        )
+        embedding = resp.data[0].embedding
+        result = get_supabase().rpc("match_faq", {
+            "query_embedding": embedding,
+            "match_threshold": threshold,
+            "match_count": limit,
+        }).execute()
+        return result.data or []
+    except Exception as e:
+        logging.error("vector search error: %s", e)
+        return []
+
+
 def _search_faq(message: str, user_info: dict | None = None) -> str:
     """FAQ テーブルをキーワード検索し、text タイプのみ Claude コンテキストとして返す。
 
@@ -1073,22 +1099,37 @@ def _search_faq(message: str, user_info: dict | None = None) -> str:
 
 
 def _faq_direct_reply(message: str, user_info: dict | None = None) -> TextSendMessage | TemplateSendMessage | None:
-    """FAQ を検索し、answer_type が button/carousel なら LINE メッセージを返す。
-    text タイプまたは未ヒットの場合は None を返す（Claude 経由で処理）。
-
-    検索優先順位: ユーザーの市 → 都道府県 → 全国共通
+    """ハイブリッド検索（キーワード→ジャンル→ベクトル）でFAQを引き、直接返信メッセージを作る。
+    text は TextSendMessage、button/carousel は TemplateSendMessage を返す。
+    未ヒットは None を返す（Claude 経由で処理）。
     """
     try:
         words = [w for w in re.split(r'[　\s。、？！ー・]+', message) if len(w) >= 2][:5]
         pref, city = _user_location(user_info)
         cols = "question, answer, answer_type, options"
 
-        rows = _faq_priority_search(words, ["button", "carousel"], cols, pref, city)
+        # 1. キーワード全文検索（固有名詞・地名に強い）
+        rows = _faq_priority_search(words, None, cols, pref, city)
+
+        # 2. ジャンル検索にフォールバック
+        if not rows:
+            genre = _detect_faq_genre(message)
+            if genre:
+                rows = _faq_genre_search(genre, None, cols, pref, city)
+
+        # 3. ベクトル検索にフォールバック（意味検索・類義語に強い）
+        if not rows:
+            rows = _vector_search_faq(message)
 
         for row in rows:
             atype = row.get("answer_type", "text")
 
-            if atype == "button":
+            if atype == "text":
+                answer = (row.get("answer") or "").strip()
+                if answer:
+                    return TextSendMessage(text=answer)
+
+            elif atype == "button":
                 opts = row.get("options") or []
                 actions = [
                     MessageAction(label=o["label"][:20], text=o["text"][:300])
@@ -1104,7 +1145,7 @@ def _faq_direct_reply(message: str, user_info: dict | None = None) -> TextSendMe
                     ),
                 )
 
-            if atype == "carousel":
+            elif atype == "carousel":
                 opts = row.get("options") or []
                 columns = []
                 for o in opts[:10]:
@@ -1129,6 +1170,29 @@ def _faq_direct_reply(message: str, user_info: dict | None = None) -> TextSendMe
     except Exception as e:
         logging.error("faq direct reply error: %s", e)
         return None
+
+
+def _save_missed_faq(question: str, claude_answer: str) -> None:
+    """FAQにヒットせずClaudeが回答した質問をmissed_faqsに記録する。
+    同一質問が再送されたらuser_countを+1して集計する。
+    """
+    try:
+        sb = get_supabase()
+        result = sb.table("missed_faqs").select("id, user_count").eq("question", question).limit(1).execute()
+        if result.data:
+            row_id = result.data[0]["id"]
+            new_count = result.data[0]["user_count"] + 1
+            sb.table("missed_faqs").update({
+                "user_count": new_count,
+                "claude_answer": claude_answer,
+            }).eq("id", row_id).execute()
+        else:
+            sb.table("missed_faqs").insert({
+                "question": question,
+                "claude_answer": claude_answer,
+            }).execute()
+    except Exception as e:
+        logging.error("save_missed_faq error: %s", e)
 
 
 def _load_history(user_id: str) -> list[dict]:
@@ -1182,6 +1246,7 @@ def get_claude_reply(
     user_message: str,
     user_info: dict | None = None,
     skip_faq: bool = False,
+    save_missed: bool = False,
 ) -> str:
     # 毎回DBから履歴を取得（DBが唯一の真実源。サーバー再起動・複数ワーカーに対応）
     history = _load_history(user_id)
@@ -1202,19 +1267,14 @@ def get_claude_reply(
             f"\n・お住まいの地域：{user_info['region']}"
         )
 
-    # 会話継続中はFAQ・飲食店DBをスキップして文脈を優先する
+    # 会話継続中はDBをスキップして文脈を優先する
+    # 新規トピック時はFAQをhandle_message側で確認済みなので飲食店情報のみ注入
     if not skip_faq:
-        # 飲食系の質問 かつ 藤沢市ユーザーのみDBから店舗情報を取得（他都市は順次対応予定）
         user_region = (user_info or {}).get("region", "")
         if _is_food_query(user_message) and "藤沢" in user_region:
             restaurant_context = _search_restaurants(user_message)
             if restaurant_context:
                 system += f"\n\n{restaurant_context}\n上記の情報を参考にして答えてください。"
-
-        # FAQ RAG: 全ユーザー対象（ユーザーの地域を優先して検索）
-        faq_context = _search_faq(user_message, user_info)
-        if faq_context:
-            system += f"\n\n{faq_context}\n上記のFAQ情報を参考にして答えてください。"
 
     try:
         response = anthropic_client.messages.create(
@@ -1238,25 +1298,54 @@ def get_claude_reply(
     reply_text = re.sub(r'^#{1,6}\s+',    '',    reply_text, flags=re.MULTILINE)
 
     _save_message(user_id, "assistant", reply_text)
+
+    # FAQミス（新規トピックでヒットなし）をバックグラウンドで記録
+    if save_missed:
+        threading.Thread(
+            target=_save_missed_faq, args=(user_message, reply_text), daemon=True
+        ).start()
+
     return reply_text
 
 
 # ── LINE イベントハンドラ ──────────────────────────────
+
+def _is_duplicate_event(event_id: str) -> bool:
+    """processed_events テーブルで重複チェック。
+    新規なら insert して False を返す。既存なら True を返す。
+    24時間以上古い行は削除してテーブルを小さく保つ。
+    """
+    try:
+        sb = get_supabase()
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        sb.table("processed_events").delete().lt("created_at", cutoff).execute()
+        sb.table("processed_events").insert({"event_id": event_id}).execute()
+        return False  # 新規
+    except Exception as e:
+        if any(k in str(e).lower() for k in ("duplicate", "unique", "23505")):
+            return True  # 重複
+        logging.error("duplicate event check error: %s", e)
+        return False  # 不明エラーは処理を続ける
+
 
 @app.route("/callback", methods=["POST"])
 def callback():
     signature = request.headers.get("X-Line-Signature", "")
     body = request.get_data(as_text=True)
 
-    # 生JSONから message_id → markAsReadToken のマップを作る
-    # SDK は markAsReadToken をパースしないため、ここで直接抽出する
+    # 生JSONから message_id → markAsReadToken と webhookEventId のマップを作る
+    # SDK は両フィールドをパースしないため、ここで直接抽出する
     g.mark_as_read_tokens = {}
+    g.webhook_event_ids = {}
     try:
         for ev in json.loads(body).get("events", []):
             msg_id = ev.get("message", {}).get("id")
             token  = ev.get("message", {}).get("markAsReadToken")
+            wh_id  = ev.get("webhookEventId")
             if msg_id and token:
                 g.mark_as_read_tokens[msg_id] = token
+            if msg_id and wh_id:
+                g.webhook_event_ids[msg_id] = wh_id
     except Exception:
         pass
 
@@ -1288,6 +1377,11 @@ def handle_follow(event):
 def handle_message(event):
     user_id = event.source.user_id
     user_message = event.message.text
+
+    # ── webhook 重複チェック ──────────────────────────────────────
+    webhook_event_id = getattr(g, "webhook_event_ids", {}).get(event.message.id)
+    if webhook_event_id and _is_duplicate_event(webhook_event_id):
+        return  # 同一イベントの再配信はスキップ
 
     # ── 既読 ＆ 入力中アニメーション ──────────────────────────────
     # メッセージを受け取ったら、AI が答えを作り始める前に
@@ -1496,13 +1590,13 @@ def handle_message(event):
 
     # 登録済みユーザーへの Claude 返答：バックグラウンドスレッドで処理し、
     # reply_token 失効後も届く push_message で送信
-    def _process(uid: str, msg: str, uinfo: dict, skip_faq: bool) -> None:
+    def _process(uid: str, msg: str, uinfo: dict, skip_faq: bool, save_missed: bool) -> None:
         reply_text = "申し訳ありません。\nただいま少し調子が悪いようです。\nしばらくしてからもう一度お試しください。"
         try:
             # TOTAL_REPLY_TIMEOUT 秒のハードタイムアウトで30秒以内の返答を保証
             # メッセージのDB保存は get_claude_reply 内で行う
             with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(get_claude_reply, uid, msg, uinfo, skip_faq)
+                future = executor.submit(get_claude_reply, uid, msg, uinfo, skip_faq, save_missed)
                 try:
                     reply_text = future.result(timeout=TOTAL_REPLY_TIMEOUT)
                 except FuturesTimeoutError:
@@ -1530,7 +1624,13 @@ def handle_message(event):
         except Exception as e:
             logging.exception("push_message error: %s", e)
 
-    threading.Thread(target=_process, args=(user_id, user_message, user_info, in_conversation), daemon=True).start()
+    # skip_faq = in_conversation（会話継続中は飲食店DB注入もスキップ）
+    # save_missed = not in_conversation（新規トピックでFAQミスの場合のみ記録）
+    threading.Thread(
+        target=_process,
+        args=(user_id, user_message, user_info, in_conversation, not in_conversation),
+        daemon=True,
+    ).start()
 
 
 # ── ヘルスチェック ────────────────────────────────────
