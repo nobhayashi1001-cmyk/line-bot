@@ -49,6 +49,8 @@ LIFF_ID          = os.environ.get("LIFF_ID", "")
 LIFF_INVITE_ID   = os.environ.get("LIFF_INVITE_ID",  LIFF_ID)
 LIFF_FAQ_ID      = os.environ.get("LIFF_FAQ_ID",     LIFF_ID)
 LIFF_SEARCH_ID   = os.environ.get("LIFF_SEARCH_ID",  LIFF_ID)
+LIFF_MAP_ID      = os.environ.get("LIFF_MAP_ID",     LIFF_ID)
+GOOGLE_MAPS_API_KEY    = os.environ.get("GOOGLE_MAPS_API_KEY", "")
 STRIPE_SECRET_KEY      = os.environ.get("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET  = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 STRIPE_PRICE_ID        = os.environ.get("STRIPE_PRICE_ID", "")
@@ -2541,6 +2543,217 @@ def liff_api_spots():
     except Exception as e:
         logging.exception("liff_api_spots error: %s", e)
         return jsonify({"error": "server error"}), 500
+
+
+# ── ④ 地図・周辺検索（LIFF） ────────────────────────
+
+_LIFF_MAP_HTML = """\
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=yes">
+<title>地図・周辺検索</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:20px;background:#f5f5f5;color:#333;line-height:1.7}}
+.hd{{background:#1565c0;color:#fff;padding:18px 16px;text-align:center}}
+.hd h1{{font-size:24px;font-weight:bold}}
+.loc-bar{{display:flex;align-items:center;gap:8px;padding:12px 16px;background:#fff;font-size:18px;border-bottom:1px solid #e0e0e0}}
+.loc-bar.success{{color:#2e7d32}}
+.loc-bar.error{{color:#c62828;background:#fff8f8}}
+.cat-wrap{{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 16px;background:#fff;border-bottom:2px solid #e0e0e0}}
+.cat-btn{{padding:16px 8px;font-size:19px;font-weight:bold;border:3px solid #1565c0;border-radius:14px;background:#fff;color:#1565c0;cursor:pointer;text-align:center;line-height:1.4}}
+.cat-btn:active,.cat-btn.active{{background:#1565c0;color:#fff}}
+.cat-btn.full{{grid-column:1/-1}}
+.wrap{{padding:12px 16px;max-width:600px;margin:0 auto}}
+.card{{background:#fff;border-radius:14px;padding:18px 16px;margin-bottom:14px;box-shadow:0 2px 8px rgba(0,0,0,.09)}}
+.card-name{{font-size:22px;font-weight:bold;color:#1565c0;margin-bottom:8px}}
+.card-row{{font-size:18px;color:#555;margin-bottom:4px}}
+.card-row.addr{{font-size:17px;color:#888}}
+.open{{color:#2e7d32;font-weight:bold;background:#e8f5e9;padding:2px 8px;border-radius:6px;font-size:16px}}
+.closed{{color:#c62828;font-weight:bold;background:#fff3f3;padding:2px 8px;border-radius:6px;font-size:16px}}
+.card-btns{{display:flex;gap:10px;margin-top:12px}}
+.cbtn{{flex:1;padding:13px 8px;font-size:18px;font-weight:bold;border-radius:10px;border:none;cursor:pointer;text-align:center;text-decoration:none;display:block}}
+.cbtn-map{{background:#e8f0fe;color:#1565c0;border:2px solid #1565c0}}
+.cbtn-call{{background:#e8f5e9;color:#2e7d32;border:2px solid #2e7d32}}
+.loader{{text-align:center;padding:48px;color:#888;font-size:20px}}
+.empty{{text-align:center;padding:40px;color:#aaa;font-size:19px}}
+.note{{background:#fff9e6;border:1px solid #f0c060;border-radius:10px;padding:14px 16px;font-size:17px;color:#555;margin:14px 0}}
+</style>
+</head>
+<body>
+<div id="map-hidden" style="width:1px;height:1px;visibility:hidden;position:absolute"></div>
+<div class="hd"><h1>📍 地図・周辺検索</h1></div>
+<div id="loc-bar" class="loc-bar">⏳ 現在地を取得中...</div>
+<div class="cat-wrap">
+  <button class="cat-btn" id="btn-hospital"    onclick="doSearch('hospital',   this)">🏥 病院・クリニック</button>
+  <button class="cat-btn" id="btn-pharmacy"    onclick="doSearch('pharmacy',   this)">💊 薬局</button>
+  <button class="cat-btn" id="btn-restaurant"  onclick="doSearch('restaurant', this)">🍽️ 飲食店</button>
+  <button class="cat-btn" id="btn-supermarket" onclick="doSearch('supermarket',this)">🏪 スーパー</button>
+  <button class="cat-btn full" id="btn-public" onclick="doSearch('public',     this)">🏛️ 公共施設（市役所・図書館など）</button>
+</div>
+<div class="wrap">
+  <div id="loader" class="loader" style="display:none">🔍 検索中...</div>
+  <div id="list"></div>
+</div>
+
+<script>
+var LIFF_ID = "{liff_map_id}";
+var GMAPS_KEY = "{google_maps_api_key}";
+var userLat = null, userLng = null;
+var placesService = null, mapObj = null;
+var mapsReady = false;
+var pendingCategory = null;
+
+liff.init({{liffId: LIFF_ID}}).catch(function(){{}});
+
+var locBar = document.getElementById('loc-bar');
+
+if (!navigator.geolocation) {{
+  locBar.className = 'loc-bar error';
+  locBar.textContent = '⚠️ このブラウザは位置情報に対応していません';
+}} else {{
+  navigator.geolocation.getCurrentPosition(
+    function(pos) {{
+      userLat = pos.coords.latitude;
+      userLng  = pos.coords.longitude;
+      locBar.className = 'loc-bar success';
+      locBar.textContent = '📍 現在地を取得しました ✓';
+      loadGoogleMaps();
+    }},
+    function(err) {{
+      locBar.className = 'loc-bar error';
+      locBar.textContent = '⚠️ 現在地を取得できませんでした（設定から位置情報を許可してください）';
+    }},
+    {{timeout: 12000, enableHighAccuracy: true}}
+  );
+}}
+
+function loadGoogleMaps() {{
+  if (!GMAPS_KEY) {{
+    locBar.className = 'loc-bar error';
+    locBar.textContent = '⚠️ Google Maps APIキーが設定されていません';
+    return;
+  }}
+  var s = document.createElement('script');
+  s.src = 'https://maps.googleapis.com/maps/api/js?key=' + GMAPS_KEY
+        + '&libraries=places,geometry&language=ja&callback=onMapsLoaded';
+  s.async = true; s.defer = true;
+  document.head.appendChild(s);
+}}
+
+function onMapsLoaded() {{
+  var center = new google.maps.LatLng(userLat, userLng);
+  mapObj = new google.maps.Map(document.getElementById('map-hidden'), {{center: center, zoom: 15}});
+  placesService = new google.maps.places.PlacesService(mapObj);
+  mapsReady = true;
+  if (pendingCategory) {{ doSearch(pendingCategory, null); pendingCategory = null; }}
+}}
+
+var CAT_CFG = {{
+  hospital:    {{type: 'hospital',          keyword: '病院 クリニック 内科'}},
+  pharmacy:    {{type: 'pharmacy',          keyword: '薬局 ドラッグストア'}},
+  restaurant:  {{type: 'restaurant',        keyword: null}},
+  supermarket: {{type: 'supermarket',       keyword: 'スーパー 食料品 イオン'}},
+  public:      {{type: null,               keyword: '市役所 区役所 図書館 郵便局 公共施設'}}
+}};
+
+function doSearch(cat, btn) {{
+  document.querySelectorAll('.cat-btn').forEach(function(b) {{ b.classList.remove('active'); }});
+  if (btn) btn.classList.add('active');
+
+  if (!mapsReady) {{
+    pendingCategory = cat;
+    document.getElementById('loader').style.display = 'block';
+    document.getElementById('list').innerHTML = '';
+    return;
+  }}
+  document.getElementById('loader').style.display = 'block';
+  document.getElementById('list').innerHTML = '';
+
+  var cfg = CAT_CFG[cat];
+  var center = new google.maps.LatLng(userLat, userLng);
+  var req = {{location: center, radius: 1500, language: 'ja'}};
+  if (cfg.type)    req.type    = cfg.type;
+  if (cfg.keyword) req.keyword = cfg.keyword;
+
+  placesService.nearbySearch(req, function(results, status) {{
+    document.getElementById('loader').style.display = 'none';
+    var PS = google.maps.places.PlacesServiceStatus;
+    if (status !== PS.OK && status !== PS.ZERO_RESULTS) {{
+      document.getElementById('list').innerHTML = '<div class="note">⚠️ 検索エラーが発生しました（' + status + '）</div>';
+      return;
+    }}
+    if (!results || !results.length) {{
+      document.getElementById('list').innerHTML = '<div class="empty">近くに見つかりませんでした</div>';
+      return;
+    }}
+    results = results.slice(0, 8);
+    var html = '';
+    results.forEach(function(place) {{
+      var dist = Math.round(
+        google.maps.geometry.spherical.computeDistanceBetween(center, place.geometry.location)
+      );
+      var distStr = dist >= 1000 ? (dist / 1000).toFixed(1) + 'km' : dist + 'm';
+      var openStr = '';
+      if (place.opening_hours) {{
+        openStr = place.opening_hours.open_now
+          ? '<span class="open">営業中</span>'
+          : '<span class="closed">営業時間外</span>';
+      }}
+      var mapsUrl = 'https://maps.google.com/?place_id=' + encodeURIComponent(place.place_id);
+      html += '<div class="card">'
+        + '<div class="card-name">' + esc(place.name) + '</div>'
+        + '<div class="card-row">📍 ' + distStr + (openStr ? '　' + openStr : '') + '</div>'
+        + (place.vicinity ? '<div class="card-row addr">🏠 ' + esc(place.vicinity) + '</div>' : '')
+        + '<div class="card-btns">'
+        + '<a class="cbtn cbtn-map" href="' + mapsUrl + '" target="_blank">🗺️ 地図で見る</a>'
+        + '<button class="cbtn cbtn-call" data-pid="' + esc(place.place_id) + '" onclick="callPlace(this)">📞 電話する</button>'
+        + '</div></div>';
+    }});
+    document.getElementById('list').innerHTML = html;
+  }});
+}}
+
+function callPlace(btn) {{
+  if (btn.dataset.phone) {{
+    location.href = 'tel:' + btn.dataset.phone;
+    return;
+  }}
+  var pid = btn.dataset.pid;
+  btn.textContent = '取得中...';
+  placesService.getDetails(
+    {{placeId: pid, fields: ['formatted_phone_number']}},
+    function(detail, st) {{
+      if (st === google.maps.places.PlacesServiceStatus.OK && detail.formatted_phone_number) {{
+        btn.dataset.phone = detail.formatted_phone_number;
+        btn.textContent = '📞 ' + detail.formatted_phone_number;
+        location.href = 'tel:' + detail.formatted_phone_number;
+      }} else {{
+        btn.textContent = '電話番号なし';
+        btn.disabled = true;
+      }}
+    }}
+  );
+}}
+
+function esc(s) {{
+  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}}
+</script>
+</body></html>
+"""
+
+
+@app.route("/liff/map", methods=["GET"])
+def liff_map():
+    html = _LIFF_MAP_HTML.format(
+        liff_map_id=LIFF_MAP_ID,
+        google_maps_api_key=GOOGLE_MAPS_API_KEY,
+    )
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
 
 # ── ③ 特商法ページ・利用規約 ────────────────────────
