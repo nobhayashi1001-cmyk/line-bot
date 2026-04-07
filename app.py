@@ -270,9 +270,9 @@ def _get_context_quick_reply(user_message: str) -> QuickReply:
         ] + back
     elif "天気" in user_message or "気温" in user_message or "雨" in user_message:
         items = [
-            ("明日の天気は？",   "明日の藤沢の天気を教えてください"),
-            ("週間予報は？",     "今週の藤沢の天気を教えてください"),
-            ("防災情報は？",     "藤沢の防災情報を教えてください"),
+            ("明日の天気は？",   "明日の天気を教えてください"),
+            ("週間予報は？",     "今週の天気を教えてください"),
+            ("防災情報は？",     "地域の防災情報を教えてください"),
         ] + back
     elif "病院" in user_message or "薬局" in user_message or "医" in user_message:
         items = [
@@ -428,9 +428,9 @@ def _flex_search_menu() -> FlexSendMessage:
 def _flex_know_menu() -> FlexSendMessage:
     """③知る：3カードカルーセル"""
     bubbles = [
-        _make_card_bubble("⛅", "今日の藤沢の天気", "雨・気温・風など\n今日の天気を確認", "今日の藤沢の天気を教えてください", "#4A90D9"),
-        _make_card_bubble("🗑️", "ゴミの収集日", "燃えるゴミ・資源ゴミ\n粗大ゴミの出し方も", "藤沢市のゴミの収集日を教えてください", "#5BAD6F"),
-        _make_card_bubble("🎉", "街のイベント", "近くのイベントや\n季節の行事を紹介", "藤沢の街のイベントを教えてください", "#D95B7A"),
+        _make_card_bubble("⛅", "今日の天気", "雨・気温・風など\n今日の天気を確認", "今日の天気を教えてください", "#4A90D9"),
+        _make_card_bubble("🗑️", "ゴミの収集日", "燃えるゴミ・資源ゴミ\n粗大ゴミの出し方も", "ゴミの収集日を教えてください", "#5BAD6F"),
+        _make_card_bubble("🎉", "街のイベント", "近くのイベントや\n季節の行事を紹介", "近くの街のイベントを教えてください", "#D95B7A"),
     ]
     return FlexSendMessage(
         alt_text="何を知りたいですか？",
@@ -1538,9 +1538,9 @@ def handle_message(event):
     # ③ 知る
     if msg == "知る":
         qr = _build_quick_reply([
-            ("明日の天気は？",     "明日の藤沢の天気を教えてください"),
+            ("明日の天気は？",     "明日の天気を教えてください"),
             ("粗大ゴミの出し方",   "粗大ゴミの出し方を教えてください"),
-            ("もっと見る",         "藤沢の地域情報をもっと教えてください"),
+            ("もっと見る",         "地域情報をもっと教えてください"),
             _QR_BACK,
         ])
         flex = _flex_know_menu()
