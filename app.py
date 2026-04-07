@@ -17,8 +17,7 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import (
     MessageEvent, TextMessage, TextSendMessage, FollowEvent,
-    TemplateSendMessage, ButtonsTemplate, ConfirmTemplate,
-    CarouselTemplate, CarouselColumn, MessageAction, URIAction,
+    MessageAction, URIAction,
     QuickReply, QuickReplyButton, FlexSendMessage,
 )
 import httpx
@@ -42,8 +41,10 @@ LINE_CHANNEL_SECRET = os.environ["LINE_CHANNEL_SECRET"]
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_KEY"]
-RICH_MENU_FREE_ID = os.environ.get("RICH_MENU_FREE_ID", "")
-RICH_MENU_PAID_ID = os.environ.get("RICH_MENU_PAID_ID", "")
+RICH_MENU_FREE_TAB1_ID  = os.environ.get("RICH_MENU_FREE_TAB1_ID", "")
+RICH_MENU_FREE_TAB2_ID  = os.environ.get("RICH_MENU_FREE_TAB2_ID", "")
+RICH_MENU_PAID_TAB1_ID  = os.environ.get("RICH_MENU_PAID_TAB1_ID", "")
+RICH_MENU_PAID_TAB2_ID  = os.environ.get("RICH_MENU_PAID_TAB2_ID", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 LIFF_ID          = os.environ.get("LIFF_ID", "")
 LIFF_INVITE_ID   = os.environ.get("LIFF_INVITE_ID",  LIFF_ID)
@@ -303,20 +304,26 @@ def _get_context_quick_reply(user_message: str) -> QuickReply:
     return _build_quick_reply(items)
 
 
-def _build_menu_message(name: str) -> TemplateSendMessage:
-    """メインメニューをボタンテンプレートで返す。"""
-    return TemplateSendMessage(
+def _build_menu_message(name: str) -> FlexSendMessage:
+    """メインメニューをFlexカルーセルで返す。"""
+    items = [
+        ("📱", "スマホ相談",    "スマホの使い方について教えてください"),
+        ("☀️", "天気・防災",    "今日の天気と防災情報を教えてください"),
+        ("🏥", "病院・薬局",    "近くの病院や薬局を教えてください"),
+        ("🛒", "ごはん・買い物","近くのお店やおすすめを教えてください"),
+    ]
+    bubbles = [
+        _retro_bubble(
+            title=label,
+            icon=icon,
+            desc="",
+            action={"type": "message", "label": "タップする", "text": text},
+        )
+        for icon, label, text in items
+    ]
+    return FlexSendMessage(
         alt_text=f"{name}さん、何でもどうぞ。",
-        template=ButtonsTemplate(
-            title="メニュー",
-            text=f"{name}さん、何でもどうぞ。",
-            actions=[
-                MessageAction(label="📱 スマホ相談",    text="スマホの使い方について教えてください"),
-                MessageAction(label="☀️ 天気・防災",    text="今日の天気と防災情報を教えてください"),
-                MessageAction(label="🏥 病院・薬局",    text="近くの病院や薬局を教えてください"),
-                MessageAction(label="🛒 ごはん・買い物", text="近くのお店やおすすめを教えてください"),
-            ],
-        ),
+        contents={"type": "carousel", "contents": bubbles},
     )
 
 
@@ -331,82 +338,162 @@ def _build_welcome_message(extra_msg: str = "") -> TextSendMessage:
     )
 
 
-def _build_restaurant_carousel(restaurants: list[dict]) -> TemplateSendMessage:
-    """飲食店リストをカルーセルテンプレートで返す。"""
-    columns = []
+def _build_restaurant_carousel(restaurants: list[dict]) -> FlexSendMessage:
+    """飲食店リストをレトロデザインFlexカルーセルで返す。"""
+    bubbles = []
     for r in restaurants[:10]:
         parts = [r.get("genre", ""), r.get("area", "")]
         if r.get("rating"):
             parts.append(f"評価{r['rating']}")
-        text = " / ".join(p for p in parts if p)[:60] or "詳細情報"
+        desc = " / ".join(p for p in parts if p)[:60] or "詳細情報"
 
-        actions: list = [
-            MessageAction(label="詳しく聞く", text=f"{r['name']}について詳しく教えてください"),
-        ]
+        footer_btns: list = [{
+            "type": "button",
+            "action": {"type": "message", "label": "詳しく聞く",
+                       "text": f"{r['name']}について詳しく教えてください"},
+            "style": "primary", "color": _R_BTN_COLOR, "height": "sm",
+        }]
         if r.get("phone"):
-            actions.append(URIAction(label="電話する", uri=f"tel:{r['phone']}"))
+            footer_btns.append({
+                "type": "button",
+                "action": {"type": "uri", "label": "電話する", "uri": f"tel:{r['phone']}"},
+                "style": "secondary", "height": "sm", "margin": "sm",
+            })
 
-        columns.append(CarouselColumn(
-            title=r["name"][:40],
-            text=text,
-            actions=actions,
-        ))
+        bubbles.append({
+            "type": "bubble",
+            "size": "kilo",
+            "header": {
+                "type": "box", "layout": "vertical", "paddingAll": "md",
+                "backgroundColor": _R_HEADER_BG,
+                "contents": [{
+                    "type": "text", "text": r["name"][:40],
+                    "weight": "bold", "size": "md",
+                    "color": _R_HEADER_TEXT, "align": "center", "wrap": True,
+                }],
+            },
+            "body": {
+                "type": "box", "layout": "vertical", "paddingAll": "lg",
+                "backgroundColor": _R_BODY_BG,
+                "contents": [{
+                    "type": "text", "text": desc,
+                    "size": "sm", "color": _R_SUB_TEXT, "wrap": True, "align": "center",
+                }],
+            },
+            "footer": {
+                "type": "box", "layout": "vertical", "paddingAll": "md",
+                "spacing": "sm", "backgroundColor": _R_BODY_BG,
+                "contents": footer_btns,
+            },
+        })
 
-    return TemplateSendMessage(
+    return FlexSendMessage(
         alt_text="お店の情報",
-        template=CarouselTemplate(columns=columns),
+        contents={"type": "carousel", "contents": bubbles},
     )
 
 
-# ── フレックスメッセージ ────────────────────────────────
+# ── レトロデザイン定数 ────────────────────────────────────────────
+_R_HEADER_BG   = "#8B1A1A"   # えんじ（ヘッダー背景）
+_R_BODY_BG     = "#F5E6A3"   # 和紙イエロー（ボディ背景・リッチメニューと統一）
+_R_HEADER_TEXT = "#FFD700"   # 金（ヘッダーテキスト）
+_R_BODY_TEXT   = "#4A2C0A"   # 濃茶（ボディテキスト）
+_R_SUB_TEXT    = "#4A2C0A"   # 濃茶（サブテキスト）
+_R_BTN_COLOR   = "#8B1A1A"   # えんじ（ボタン色）
 
-def _make_card_bubble(emoji: str, title: str, desc: str, btn_text: str, color: str) -> dict:
-    """シンプルなカード型バブル（絵文字ヒーロー＋説明＋ボタン）を返す。"""
-    return {
+# カードアイコン画像のベースURL（Renderサーバー）
+_CARD_ICON_BASE = "https://line-bot-jq43.onrender.com/static/card_icons"
+
+
+def _card_icon(filename: str) -> str:
+    return f"{_CARD_ICON_BASE}/{filename}"
+
+
+def _retro_bubble(title: str, icon: str, desc: str, action: dict,
+                  size: str = "kilo", image_url: str = "") -> dict:
+    """レトロデザインのカード型バブルを返す。image_url があれば hero に表示。"""
+    body_contents: list = []
+    if icon and not image_url:
+        body_contents.append({"type": "text", "text": icon, "size": "4xl", "align": "center"})
+    if desc:
+        body_contents.append({
+            "type": "text", "text": desc,
+            "size": "sm", "color": _R_SUB_TEXT,
+            "align": "center", "wrap": True,
+            "margin": "md" if (icon and not image_url) else "none",
+        })
+
+    bubble: dict = {
         "type": "bubble",
-        "size": "kilo",
+        "size": size,
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "paddingAll": "md",
+            "backgroundColor": _R_HEADER_BG,
+            "contents": [{
+                "type": "text", "text": title,
+                "weight": "bold", "size": "md",
+                "color": _R_HEADER_TEXT, "align": "center", "wrap": True,
+            }],
+        },
         "body": {
             "type": "box",
             "layout": "vertical",
-            "spacing": "md",
-            "paddingAll": "xl",
-            "contents": [
-                {"type": "text", "text": emoji, "size": "4xl", "align": "center"},
-                {
-                    "type": "text", "text": title,
-                    "weight": "bold", "size": "lg",
-                    "align": "center", "wrap": True,
-                },
-                {
-                    "type": "text", "text": desc,
-                    "size": "sm", "color": "#888888",
-                    "align": "center", "wrap": True,
-                },
-            ],
+            "spacing": "sm",
+            "paddingAll": "lg",
+            "backgroundColor": _R_BODY_BG,
+            "contents": body_contents or [{"type": "text", "text": " ", "size": "xs"}],
         },
         "footer": {
             "type": "box",
             "layout": "vertical",
-            "paddingAll": "lg",
-            "contents": [
-                {
-                    "type": "button",
-                    "action": {"type": "message", "label": "タップする", "text": btn_text},
-                    "style": "primary",
-                    "color": color,
-                    "height": "sm",
-                }
-            ],
+            "paddingAll": "md",
+            "backgroundColor": _R_BODY_BG,
+            "contents": [{
+                "type": "button",
+                "action": action,
+                "style": "primary",
+                "color": _R_BTN_COLOR,
+                "height": "sm",
+            }],
         },
     }
+    if image_url:
+        bubble["hero"] = {
+            "type": "image",
+            "url": image_url,
+            "size": "full",
+            "aspectRatio": "1:1",
+            "aspectMode": "fit",
+            "backgroundColor": _R_BODY_BG,
+        }
+    return bubble
+
+
+# ── フレックスメッセージ ────────────────────────────────
+
+def _make_card_bubble(emoji: str, title: str, desc: str, btn_text: str,
+                      color: str, image_url: str = "") -> dict:
+    """レトロデザインのカード型バブルを返す。"""
+    return _retro_bubble(
+        title=title,
+        icon=emoji,
+        desc=desc,
+        action={"type": "message", "label": "タップする", "text": btn_text},
+        image_url=image_url,
+    )
 
 
 def _flex_consult_menu() -> FlexSendMessage:
     """①相談する：3カードカルーセル"""
     bubbles = [
-        _make_card_bubble("📱", "スマホの使いかた", "操作方法からアプリまで\nやさしく教えます", "スマホの使いかたを教えてください", "#4A90D9"),
-        _make_card_bubble("🏥", "健康・からだ", "体の悩みや薬のこと\nいつでも相談できます", "健康について相談したいことがあります", "#5BAD6F"),
-        _make_card_bubble("🏠", "お家の困りごと", "水漏れや電気など\n業者探しもお手伝い", "家の困りごとを相談したいです", "#E8734A"),
+        _make_card_bubble("📱", "スマホの使いかた", "操作方法からアプリまで\nやさしく教えます",
+                          "スマホの使いかたを教えてください", "", _card_icon("smartphone.png")),
+        _make_card_bubble("🏥", "健康・からだ", "体の悩みや薬のこと\nいつでも相談できます",
+                          "健康について相談したいことがあります", "", _card_icon("health.png")),
+        _make_card_bubble("🏠", "お家の困りごと", "水漏れや電気など\n業者探しもお手伝い",
+                          "家の困りごとを相談したいです", "", _card_icon("home.png")),
     ]
     return FlexSendMessage(
         alt_text="何についてご相談ですか？",
@@ -417,9 +504,12 @@ def _flex_consult_menu() -> FlexSendMessage:
 def _flex_search_menu() -> FlexSendMessage:
     """②探す：3カードカルーセル"""
     bubbles = [
-        _make_card_bubble("🍽️", "近くの美味しいお店", "和食・洋食・カフェなど\nおすすめを教えます", "近くの美味しいお店を教えてください", "#E8734A"),
-        _make_card_bubble("🏥", "近くの病院", "内科・整形外科など\n診療科で探せます", "近くの病院を教えてください", "#5BAD6F"),
-        _make_card_bubble("🏛️", "公共施設・公園", "市役所・図書館・公園など\n近くの施設を案内", "近くの公共施設や公園を教えてください", "#4A90D9"),
+        _make_card_bubble("🍽️", "近くの美味しいお店", "和食・洋食・カフェなど\nおすすめを教えます",
+                          "近くの美味しいお店を教えてください", "", _card_icon("restaurant.png")),
+        _make_card_bubble("🏥", "近くの病院", "内科・整形外科など\n診療科で探せます",
+                          "近くの病院を教えてください", "", _card_icon("hospital.png")),
+        _make_card_bubble("🏛️", "公共施設・公園", "市役所・図書館・公園など\n近くの施設を案内",
+                          "近くの公共施設や公園を教えてください", "", _card_icon("facility.png")),
     ]
     return FlexSendMessage(
         alt_text="何をお探しですか？",
@@ -430,9 +520,12 @@ def _flex_search_menu() -> FlexSendMessage:
 def _flex_know_menu() -> FlexSendMessage:
     """③知る：3カードカルーセル"""
     bubbles = [
-        _make_card_bubble("⛅", "今日の天気", "雨・気温・風など\n今日の天気を確認", "今日の天気を教えてください", "#4A90D9"),
-        _make_card_bubble("🗑️", "ゴミの収集日", "燃えるゴミ・資源ゴミ\n粗大ゴミの出し方も", "ゴミの収集日を教えてください", "#5BAD6F"),
-        _make_card_bubble("🎉", "街のイベント", "近くのイベントや\n季節の行事を紹介", "近くの街のイベントを教えてください", "#D95B7A"),
+        _make_card_bubble("⛅", "今日の天気", "雨・気温・風など\n今日の天気を確認",
+                          "今日の天気を教えてください", "", _card_icon("weather.png")),
+        _make_card_bubble("🗑️", "ゴミの収集日", "燃えるゴミ・資源ゴミ\n粗大ゴミの出し方も",
+                          "ゴミの収集日を教えてください", "", _card_icon("trash.png")),
+        _make_card_bubble("🎉", "街のイベント", "近くのイベントや\n季節の行事を紹介",
+                          "近くの街のイベントを教えてください", "", _card_icon("event.png")),
     ]
     return FlexSendMessage(
         alt_text="何を知りたいですか？",
@@ -443,9 +536,12 @@ def _flex_know_menu() -> FlexSendMessage:
 def _flex_connect_menu() -> FlexSendMessage:
     """④つながる：3カードカルーセル"""
     bubbles = [
-        _make_card_bubble("🌸", "趣味のサークル", "手芸・園芸・将棋など\n同じ趣味の仲間を", "趣味のサークルを探したいです", "#D95B7A"),
-        _make_card_bubble("👥", "地域の集まり", "町内会・老人会など\n地域の輪に加わろう", "地域の集まりについて教えてください", "#8B6BB1"),
-        _make_card_bubble("📻", "昭和の思い出話", "懐かしい話を一緒に\n楽しみましょう", "昭和の思い出話をしましょう", "#E8A84A"),
+        _make_card_bubble("🌸", "趣味のサークル", "手芸・園芸・将棋など\n同じ趣味の仲間を",
+                          "趣味のサークルを探したいです", "", _card_icon("circle.png")),
+        _make_card_bubble("👥", "地域の集まり", "町内会・老人会など\n地域の輪に加わろう",
+                          "地域の集まりについて教えてください", "", _card_icon("community.png")),
+        _make_card_bubble("📻", "昭和の思い出話", "懐かしい話を一緒に\n楽しみましょう",
+                          "昭和の思い出話をしましょう", "", _card_icon("retro.png")),
     ]
     return FlexSendMessage(
         alt_text="つながりを広げましょう",
@@ -457,47 +553,50 @@ def _flex_referral_menu(referral_code: str) -> FlexSendMessage:
     """⑤友達に紹介：紹介コード表示カード"""
     bubble = {
         "type": "bubble",
+        "header": {
+            "type": "box", "layout": "vertical", "paddingAll": "md",
+            "backgroundColor": _R_HEADER_BG,
+            "contents": [{
+                "type": "text", "text": "友達に紹介しよう 🎁",
+                "weight": "bold", "size": "md", "color": _R_HEADER_TEXT, "align": "center",
+            }],
+        },
         "body": {
-            "type": "box",
-            "layout": "vertical",
-            "spacing": "md",
-            "paddingAll": "xl",
+            "type": "box", "layout": "vertical", "spacing": "md",
+            "paddingAll": "xl", "backgroundColor": _R_BODY_BG,
             "contents": [
-                {"type": "text", "text": "🎁", "size": "4xl", "align": "center"},
-                {"type": "text", "text": "お友達を紹介しよう", "weight": "bold", "size": "xl", "align": "center"},
-                {"type": "separator", "margin": "md"},
                 {
                     "type": "text", "text": "紹介すると2人に5回プレゼント",
-                    "size": "md", "color": "#D95B7A", "align": "center",
-                    "weight": "bold", "margin": "md",
+                    "size": "md", "color": _R_BTN_COLOR, "align": "center",
+                    "weight": "bold",
                 },
-                {"type": "separator", "margin": "md"},
+                {"type": "separator", "margin": "md", "color": _R_BTN_COLOR},
                 {
                     "type": "box", "layout": "vertical", "margin": "md", "spacing": "sm",
                     "contents": [
-                        {"type": "text", "text": "あなたの紹介コード", "size": "sm", "color": "#888888", "align": "center"},
-                        {"type": "text", "text": referral_code, "size": "3xl", "weight": "bold", "align": "center", "color": "#4A90D9"},
+                        {"type": "text", "text": "あなたの紹介コード", "size": "sm",
+                         "color": _R_SUB_TEXT, "align": "center"},
+                        {"type": "text", "text": referral_code, "size": "3xl",
+                         "weight": "bold", "align": "center", "color": _R_BTN_COLOR},
                     ],
                 },
                 {
                     "type": "text",
                     "text": "このコードをお友達に伝えてください",
-                    "size": "xs", "color": "#888888", "align": "center", "wrap": True, "margin": "md",
+                    "size": "xs", "color": _R_SUB_TEXT, "align": "center",
+                    "wrap": True, "margin": "md",
                 },
             ],
         },
         "footer": {
-            "type": "box",
-            "layout": "vertical",
-            "paddingAll": "lg",
-            "contents": [
-                {
-                    "type": "button",
-                    "action": {"type": "message", "label": "紹介メッセージを見る", "text": "友達に紹介するメッセージを見せてください"},
-                    "style": "primary",
-                    "color": "#D95B7A",
-                }
-            ],
+            "type": "box", "layout": "vertical", "paddingAll": "md",
+            "backgroundColor": _R_BODY_BG,
+            "contents": [{
+                "type": "button",
+                "action": {"type": "message", "label": "紹介メッセージを見る",
+                           "text": "友達に紹介するメッセージを見せてください"},
+                "style": "primary", "color": _R_BTN_COLOR,
+            }],
         },
     }
     return FlexSendMessage(alt_text="友達に紹介しよう", contents=bubble)
@@ -507,37 +606,41 @@ def _flex_upgrade_menu() -> FlexSendMessage:
     """⑥会員登録（無料会員向け）：有料プランご案内カード"""
     bubble = {
         "type": "bubble",
+        "header": {
+            "type": "box", "layout": "vertical", "paddingAll": "md",
+            "backgroundColor": _R_HEADER_BG,
+            "contents": [{
+                "type": "text", "text": "有料会員のご案内 ✨",
+                "weight": "bold", "size": "md", "color": _R_HEADER_TEXT, "align": "center",
+            }],
+        },
         "body": {
-            "type": "box",
-            "layout": "vertical",
-            "spacing": "md",
-            "paddingAll": "xl",
+            "type": "box", "layout": "vertical", "spacing": "md",
+            "paddingAll": "xl", "backgroundColor": _R_BODY_BG,
             "contents": [
-                {"type": "text", "text": "✨", "size": "4xl", "align": "center"},
-                {"type": "text", "text": "有料会員のご案内", "weight": "bold", "size": "xl", "align": "center"},
-                {"type": "separator", "margin": "md"},
+                {"type": "separator", "color": _R_BTN_COLOR},
                 {
                     "type": "box", "layout": "vertical", "margin": "md", "spacing": "sm",
                     "contents": [
-                        {"type": "text", "text": "AIと何回でも話し放題", "size": "md", "wrap": True},
-                        {"type": "text", "text": "24時間いつでも相談できる", "size": "md", "wrap": True},
-                        {"type": "text", "text": "専任コンシェルジュ対応", "size": "md", "wrap": True},
+                        {"type": "text", "text": "✔ AIと何回でも話し放題", "size": "md",
+                         "color": _R_BODY_TEXT, "wrap": True},
+                        {"type": "text", "text": "✔ 24時間いつでも相談できる", "size": "md",
+                         "color": _R_BODY_TEXT, "wrap": True},
+                        {"type": "text", "text": "✔ 専任コンシェルジュ対応", "size": "md",
+                         "color": _R_BODY_TEXT, "wrap": True},
                     ],
                 },
             ],
         },
         "footer": {
-            "type": "box",
-            "layout": "vertical",
-            "paddingAll": "lg",
-            "contents": [
-                {
-                    "type": "button",
-                    "action": {"type": "message", "label": "詳しく教えてもらう", "text": "有料会員の詳細を教えてください"},
-                    "style": "primary",
-                    "color": "#C8A000",
-                }
-            ],
+            "type": "box", "layout": "vertical", "paddingAll": "md",
+            "backgroundColor": _R_BODY_BG,
+            "contents": [{
+                "type": "button",
+                "action": {"type": "message", "label": "詳しく教えてもらう",
+                           "text": "有料会員の詳細を教えてください"},
+                "style": "primary", "color": _R_BTN_COLOR,
+            }],
         },
     }
     return FlexSendMessage(alt_text="有料会員のご案内", contents=bubble)
@@ -545,41 +648,13 @@ def _flex_upgrade_menu() -> FlexSendMessage:
 
 def _flex_ai_direct_menu() -> FlexSendMessage:
     """⑥AIに直接相談（有料会員向け）：ウェルカムカード"""
-    bubble = {
-        "type": "bubble",
-        "body": {
-            "type": "box",
-            "layout": "vertical",
-            "spacing": "md",
-            "paddingAll": "xl",
-            "contents": [
-                {"type": "text", "text": "🤖", "size": "4xl", "align": "center"},
-                {
-                    "type": "text", "text": "なんでも直接聞いてください",
-                    "weight": "bold", "size": "lg", "align": "center", "wrap": True,
-                },
-                {"type": "separator", "margin": "md"},
-                {
-                    "type": "text",
-                    "text": "24時間いつでも、何でもお気軽に。\nあなた専任のコンシェルジュが\nすぐにお答えします。",
-                    "size": "md", "color": "#555555", "align": "center", "wrap": True, "margin": "md",
-                },
-            ],
-        },
-        "footer": {
-            "type": "box",
-            "layout": "vertical",
-            "paddingAll": "lg",
-            "contents": [
-                {
-                    "type": "button",
-                    "action": {"type": "message", "label": "さっそく相談する", "text": "AIに相談したいことがあります"},
-                    "style": "primary",
-                    "color": "#C8A000",
-                }
-            ],
-        },
-    }
+    bubble = _retro_bubble(
+        title="なんでも直接聞いてください 🤖",
+        icon="",
+        desc="24時間いつでも、何でもお気軽に。\nあなた専任のコンシェルジュが\nすぐにお答えします。",
+        action={"type": "message", "label": "さっそく相談する", "text": "AIに相談したいことがあります"},
+        size="mega",
+    )
     return FlexSendMessage(alt_text="なんでも直接聞いてください", contents=bubble)
 
 
@@ -593,7 +668,7 @@ def start_registration(user_id: str) -> TextSendMessage:
     )
 
 
-def handle_registration(user_id: str, message: str) -> TemplateSendMessage | TextSendMessage:
+def handle_registration(user_id: str, message: str) -> FlexSendMessage | TextSendMessage:
     state = registration_states[user_id]
     step = state["step"]
 
@@ -624,15 +699,37 @@ def handle_registration(user_id: str, message: str) -> TemplateSendMessage | Tex
     if step == "awaiting_birthdate":
         state["birthdate"] = message.strip()
         state["step"] = "awaiting_referral_confirm"
-        return TemplateSendMessage(
+        return FlexSendMessage(
             alt_text="紹介コードをお持ちですか？",
-            template=ConfirmTemplate(
-                text="紹介コードをお持ちですか？",
-                actions=[
-                    MessageAction(label="はい", text="はい"),
-                    MessageAction(label="いいえ", text="いいえ"),
-                ],
-            ),
+            contents={
+                "type": "bubble",
+                "header": {
+                    "type": "box", "layout": "vertical", "paddingAll": "md",
+                    "backgroundColor": _R_HEADER_BG,
+                    "contents": [{
+                        "type": "text", "text": "紹介コードをお持ちですか？",
+                        "weight": "bold", "size": "md",
+                        "color": _R_HEADER_TEXT, "align": "center",
+                    }],
+                },
+                "footer": {
+                    "type": "box", "layout": "horizontal",
+                    "spacing": "sm", "paddingAll": "lg",
+                    "backgroundColor": _R_BODY_BG,
+                    "contents": [
+                        {
+                            "type": "button",
+                            "action": {"type": "message", "label": "はい", "text": "はい"},
+                            "style": "primary", "color": _R_BTN_COLOR,
+                        },
+                        {
+                            "type": "button",
+                            "action": {"type": "message", "label": "いいえ", "text": "いいえ"},
+                            "style": "secondary",
+                        },
+                    ],
+                },
+            },
         )
 
     if step == "awaiting_referral_confirm":
@@ -817,7 +914,8 @@ def _apply_rich_menu(user_id: str, is_paid: bool) -> None:
     メモリキャッシュで前回適用済みのメニューを追跡し、
     同じなら API コールをスキップする。
     """
-    target_menu_id = RICH_MENU_PAID_ID if is_paid else RICH_MENU_FREE_ID
+    # タブ切り替えはLINEのエイリアス機構が自動処理するため、タブ1のIDのみリンクする
+    target_menu_id = RICH_MENU_PAID_TAB1_ID if is_paid else RICH_MENU_FREE_TAB1_ID
     if not target_menu_id:
         return
     if _applied_menu_cache.get(user_id) == target_menu_id:
@@ -1176,9 +1274,9 @@ def _search_faq(message: str, user_info: dict | None = None) -> str:
         return ""
 
 
-def _faq_direct_reply(message: str, user_info: dict | None = None) -> TextSendMessage | TemplateSendMessage | None:
+def _faq_direct_reply(message: str, user_info: dict | None = None) -> TextSendMessage | FlexSendMessage | None:
     """ハイブリッド検索（キーワード→ジャンル→ベクトル）でFAQを引き、直接返信メッセージを作る。
-    text は TextSendMessage、button/carousel は TemplateSendMessage を返す。
+    text は TextSendMessage、button/carousel は FlexSendMessage を返す。
     未ヒットは None を返す（Claude 経由で処理）。
     """
     try:
@@ -1209,39 +1307,84 @@ def _faq_direct_reply(message: str, user_info: dict | None = None) -> TextSendMe
 
             elif atype == "button":
                 opts = row.get("options") or []
-                actions = [
-                    MessageAction(label=o["label"][:20], text=o["text"][:300])
+                btn_contents = [
+                    {
+                        "type": "button",
+                        "action": {"type": "message", "label": o["label"][:20], "text": o["text"][:300]},
+                        "style": "primary", "color": _R_BTN_COLOR, "height": "sm",
+                        "margin": "sm",
+                    }
                     for o in opts[:4]
                 ]
-                if not actions:
+                if not btn_contents:
                     continue
-                return TemplateSendMessage(
+                return FlexSendMessage(
                     alt_text=row["answer"][:100],
-                    template=ButtonsTemplate(
-                        text=row["answer"][:160],
-                        actions=actions,
-                    ),
+                    contents={
+                        "type": "bubble",
+                        "header": {
+                            "type": "box", "layout": "vertical", "paddingAll": "md",
+                            "backgroundColor": _R_HEADER_BG,
+                            "contents": [{
+                                "type": "text", "text": row["answer"][:100],
+                                "weight": "bold", "size": "sm",
+                                "color": _R_HEADER_TEXT, "wrap": True, "align": "center",
+                            }],
+                        },
+                        "body": {
+                            "type": "box", "layout": "vertical",
+                            "spacing": "sm", "paddingAll": "lg",
+                            "backgroundColor": _R_BODY_BG,
+                            "contents": btn_contents,
+                        },
+                    },
                 )
 
             elif atype == "carousel":
                 opts = row.get("options") or []
-                columns = []
+                bubbles = []
                 for o in opts[:10]:
                     col_actions = [
-                        MessageAction(label=a["label"][:20], text=a["text"][:300])
+                        {"type": "message", "label": a["label"][:20], "text": a["text"][:300]}
                         for a in (o.get("actions") or [])[:3]
                     ]
                     if not col_actions:
-                        col_actions = [MessageAction(label="詳しく聞く", text=o.get("title", ""))]
-                    columns.append(CarouselColumn(
-                        title=(o.get("title") or "")[:40],
-                        text=(o.get("text") or "詳細情報")[:60],
-                        actions=col_actions,
-                    ))
-                if columns:
-                    return TemplateSendMessage(
+                        col_actions = [{"type": "message", "label": "詳しく聞く",
+                                        "text": o.get("title", "")}]
+                    footer_btns = [
+                        {"type": "button", "action": a, "style": "primary",
+                         "color": _R_BTN_COLOR, "height": "sm", "margin": "sm"}
+                        for a in col_actions
+                    ]
+                    bubbles.append({
+                        "type": "bubble", "size": "kilo",
+                        "header": {
+                            "type": "box", "layout": "vertical", "paddingAll": "md",
+                            "backgroundColor": _R_HEADER_BG,
+                            "contents": [{
+                                "type": "text", "text": (o.get("title") or "")[:40],
+                                "weight": "bold", "size": "md",
+                                "color": _R_HEADER_TEXT, "align": "center", "wrap": True,
+                            }],
+                        },
+                        "body": {
+                            "type": "box", "layout": "vertical", "paddingAll": "lg",
+                            "backgroundColor": _R_BODY_BG,
+                            "contents": [{
+                                "type": "text", "text": (o.get("text") or "詳細情報")[:60],
+                                "size": "sm", "color": _R_SUB_TEXT, "wrap": True, "align": "center",
+                            }],
+                        },
+                        "footer": {
+                            "type": "box", "layout": "vertical", "paddingAll": "md",
+                            "spacing": "sm", "backgroundColor": _R_BODY_BG,
+                            "contents": footer_btns,
+                        },
+                    })
+                if bubbles:
+                    return FlexSendMessage(
                         alt_text=row["answer"][:100],
-                        template=CarouselTemplate(columns=columns),
+                        contents={"type": "carousel", "contents": bubbles},
                     )
 
         return None
