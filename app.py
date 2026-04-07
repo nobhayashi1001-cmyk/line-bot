@@ -10,7 +10,7 @@ from datetime import date, datetime, timezone, timedelta
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
 import json
-from flask import Flask, request, abort, g, jsonify
+from flask import Flask, request, abort, g, jsonify, redirect
 
 logging.basicConfig(level=logging.ERROR)
 from linebot import LineBotApi, WebhookHandler
@@ -1883,6 +1883,33 @@ function showErr(msg){{
 </body>
 </html>
 """
+
+
+# LIFF がエンドポイント URL に liff.state クエリパラメータを付けてリダイレクトする際の
+# ベースルート。パスを解析して各ページへサーバーサイドリダイレクトする。
+_LIFF_VALID_PATHS = {
+    "/mypage":   "/liff/mypage",
+    "/invite":   "/liff/invite",
+    "/faq":      "/liff/faq",
+    "/search":   "/liff/search",
+    "/map":      "/liff/map",
+}
+
+@app.route("/liff", methods=["GET"])
+def liff_base():
+    import urllib.parse
+    state = request.args.get("liff.state", "").strip()
+    if state:
+        # state は "/invite" や "/map?foo=bar" のような形式
+        path = urllib.parse.unquote(state)
+        # パスのみ取り出す（クエリ込みの場合も考慮）
+        path_only = path.split("?")[0].rstrip("/")
+        dest = _LIFF_VALID_PATHS.get(path_only)
+        if dest:
+            qs = path.split("?", 1)[1] if "?" in path else ""
+            return redirect(dest + ("?" + qs if qs else ""), code=302)
+    # state がない・不明なパスはマイページへ
+    return redirect("/liff/mypage", code=302)
 
 
 @app.route("/liff/mypage", methods=["GET"])
