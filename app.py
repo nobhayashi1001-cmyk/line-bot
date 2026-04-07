@@ -1662,10 +1662,7 @@ def handle_message(event):
             if faq_msg is not None:
                 line_bot_api.reply_message(
                     event.reply_token,
-                    [faq_msg, TextSendMessage(
-                        text="他にも何かありますか？",
-                        quick_reply=_build_quick_reply(_MENU_QR_ITEMS),
-                    )],
+                    faq_msg,
                 )
                 return
         except Exception as e:
