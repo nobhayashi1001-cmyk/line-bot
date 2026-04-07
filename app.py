@@ -277,7 +277,7 @@ def _get_context_quick_reply(user_message: str) -> QuickReply:
     elif "病院" in user_message or "薬局" in user_message or "医" in user_message:
         items = [
             ("近くの薬局は？",   "近くの薬局を教えてください"),
-            ("救急はどこ？",     "藤沢の救急病院を教えてください"),
+            ("救急はどこ？",     "近くの救急病院を教えてください"),
             ("診療時間は？",     "診療時間を教えてください"),
         ] + back
     elif "スマホ" in user_message or "携帯" in user_message or "スマートフォン" in user_message:
@@ -786,7 +786,7 @@ def _search_restaurants(message: str) -> str:
         return ""
     genre = next((kw for kw in _GENRE_KEYWORDS if kw in message), None)
     area  = next((kw for kw in _AREA_KEYWORDS  if kw in message), None)
-    label = f"【{area}周辺の{genre or 'お店'}情報】" if area else f"【藤沢の{genre or 'お店'}情報】"
+    label = f"【{area}周辺の{genre or 'お店'}情報】" if area else f"【地元の{genre or 'お店'}情報】"
     lines = [label]
     for r in restaurants[:5]:
         line = f"・{r['name']}（{r['genre']}／{r['area']}）"
@@ -1584,7 +1584,7 @@ def handle_message(event):
                     "お友達にこのメッセージをそのまま送ってください！\n\n"
                     "━━━━━━━━━━━━\n"
                     "地元くらしの御用聞き\n"
-                    "藤沢市の生活をAIがサポートします！\n\n"
+                    "地元の生活をAIがサポートします！\n\n"
                     "友達追加はこちら\n"
                     "https://line.me/R/ti/p/@135dsiqh\n\n"
                     f"紹介コード：{referral_code}\n"
