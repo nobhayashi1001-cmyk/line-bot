@@ -1790,6 +1790,23 @@ def handle_message(event):
         )
         return
 
+    # 動画・YouTube キーワード（利用カウント不要・URLを案内）
+    if re.search(r'動画|youtube|ユーチューブ', msg, re.IGNORECASE):
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "動画を楽しみたいですね😊\n"
+                    "YouTubeで楽しい動画がたくさん見られますよ！\n\n"
+                    "こちらからどうぞ👇"
+                ),
+                quick_reply=QuickReply(items=[
+                    QuickReplyButton(action=URIAction(label="▶️ YouTubeを開く", uri="https://www.youtube.com")),
+                ]),
+            ),
+        )
+        return
+
     # ⑥ 会員登録（無料会員）/ AIに直接相談（有料会員）
     if msg in ("会員登録", "AIに直接相談"):
         try:
@@ -1836,10 +1853,11 @@ def handle_message(event):
     in_conversation = _is_conversation_active(user_id)
 
     # FAQ直接返信チェック（会話継続中はスキップして文脈を維持）
+    # FlexSendMessage はリッチメニューボタン経由のみ表示。通常会話はテキスト返答のみ。
     if not in_conversation:
         try:
             faq_msg = _faq_direct_reply(user_message, user_info)
-            if faq_msg is not None:
+            if faq_msg is not None and isinstance(faq_msg, TextSendMessage):
                 line_bot_api.reply_message(
                     event.reply_token,
                     faq_msg,
