@@ -148,6 +148,8 @@ registration_states: dict[str, dict] = {}
 
 # ユーザー情報キャッシュ: {user_id: {"name": str, "region": str} | None}
 user_cache: dict[str, dict | None] = {}
+# リッチメニューの現在値をメモリで追跡（DB カラム不要・サーバー再起動でリセット）
+_applied_menu_cache: dict[str, str] = {}
 
 SYSTEM_PROMPT = """あなたは「御用聞きさん」です。
 ユーザーの近所に住む、気さくで頼れる友人のような存在です。
@@ -702,7 +704,7 @@ def _get_user(user_id: str) -> dict | None:
         return user_cache[user_id]
     result = (
         get_supabase().table("users")
-        .select("name, region, prefecture, city, is_paid, current_menu_id")
+        .select("name, region, prefecture, city, is_paid")
         .eq("line_user_id", user_id)
         .limit(1)
         .execute()
@@ -808,26 +810,27 @@ def _generate_referral_code() -> str:
     return secrets.token_hex(4).upper()  # 万一衝突が続いたら8文字で返す
 
 
-def _apply_rich_menu(user_id: str, is_paid: bool, current_menu_id: str | None = None) -> None:
+def _apply_rich_menu(user_id: str, is_paid: bool) -> None:
     """is_paid に応じてリッチメニューを適用する。
-    current_menu_id と一致する場合は API コールをスキップして無駄なリクエストを防ぐ。
-    切り替えた場合は DB と in-memory キャッシュの current_menu_id を更新する。
+    メモリキャッシュで前回適用済みのメニューを追跡し、
+    同じなら API コールをスキップする。
     """
     target_menu_id = RICH_MENU_PAID_ID if is_paid else RICH_MENU_FREE_ID
     if not target_menu_id:
         return
-    if target_menu_id == current_menu_id:
-        return  # 既に正しいメニューが設定済み → スキップ
+    if _applied_menu_cache.get(user_id) == target_menu_id:
+        return  # 既に正しいメニューが適用済み → スキップ
     try:
         line_bot_api.link_rich_menu_to_user(user_id, target_menu_id)
-        # DB を更新
-        get_supabase().table("users").update(
-            {"current_menu_id": target_menu_id}
-        ).eq("line_user_id", user_id).execute()
-        # キャッシュも更新
-        if user_id in user_cache and user_cache[user_id]:
-            user_cache[user_id]["current_menu_id"] = target_menu_id
+        _applied_menu_cache[user_id] = target_menu_id
         logging.info("rich menu switched: %s → %s (is_paid=%s)", user_id, target_menu_id, is_paid)
+        # DB にも記録（current_menu_id カラムが存在すれば保存、なくてもエラーにしない）
+        try:
+            get_supabase().table("users").update(
+                {"current_menu_id": target_menu_id}
+            ).eq("line_user_id", user_id).execute()
+        except Exception:
+            pass  # カラム未作成でも動作に支障なし
     except Exception as e:
         logging.error("rich menu link error: %s", e)
 
@@ -1481,7 +1484,7 @@ def handle_message(event):
         # リッチメニューをバックグラウンドで同期（変更がある時のみ API コール）
         threading.Thread(
             target=_apply_rich_menu,
-            args=(user_id, bool(user_info.get("is_paid")), user_info.get("current_menu_id")),
+            args=(user_id, bool(user_info.get("is_paid"))),
             daemon=True,
         ).start()
     except Exception as e:
