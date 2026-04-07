@@ -1942,6 +1942,8 @@ body {
   letter-spacing: 0.1em;
   border-bottom: 3px solid var(--border);
 }
+.retro-header h1 { font-size: 22px; font-weight: bold; }
+.retro-header p  { font-size: 15px; margin-top: 5px; opacity: .9; }
 
 /* カード */
 .retro-card {
@@ -2022,36 +2024,24 @@ _LIFF_HTML = """\
 <title>マイページ</title>
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
-*{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:20px;background:#f0f4f8;color:#333;line-height:1.7}}
-.hd{{background:#1565c0;color:#fff;padding:20px 16px;text-align:center}}
-.hd h1{{font-size:26px;font-weight:bold}}
-.hd p{{font-size:18px;margin-top:6px;opacity:.9}}
+{retro_css}
 .wrap{{max-width:480px;margin:0 auto;padding:16px}}
-.card{{background:#fff;border-radius:14px;padding:20px;margin-bottom:16px;box-shadow:0 2px 10px rgba(0,0,0,.08)}}
-.card-ttl{{font-size:17px;font-weight:bold;color:#1565c0;border-bottom:2px solid #1565c0;padding-bottom:8px;margin-bottom:14px}}
-.row{{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid #eee}}
+.row{{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px dashed var(--divider)}}
 .row:last-child{{border-bottom:none}}
-.lbl{{font-size:19px;color:#555}}
-.val{{font-size:24px;font-weight:bold;color:#1565c0}}
+.lbl{{font-size:18px;color:var(--sub-text)}}
+.val{{font-size:22px;font-weight:bold;color:var(--header-bg)}}
 .val.grn{{color:#2e7d32}}
-.info-lbl{{font-size:16px;color:#888;margin-bottom:4px}}
-.info-val{{font-size:22px;font-weight:bold;margin-bottom:18px}}
-.form-grp{{margin-bottom:18px}}
-.form-lbl{{display:block;font-size:19px;color:#444;margin-bottom:6px;font-weight:bold}}
-.form-inp{{width:100%;font-size:20px;padding:14px;border:2px solid #ccc;border-radius:10px;background:#fff}}
-.form-inp:focus{{border-color:#1565c0;outline:none}}
-.btn{{display:block;width:100%;padding:20px;font-size:23px;font-weight:bold;border:none;border-radius:12px;cursor:pointer;text-align:center;margin-top:8px}}
-.btn-save{{background:#1565c0;color:#fff}}
-.btn-save:active{{background:#0d47a1}}
-.loader{{text-align:center;padding:48px;color:#888;font-size:20px}}
-.errmsg{{background:#fff0f0;border:2px solid #e53935;border-radius:10px;padding:18px;color:#b71c1c;text-align:center;font-size:19px;line-height:1.6}}
-.ok-msg{{background:#e8f5e9;border:2px solid #43a047;border-radius:10px;padding:14px;color:#2e7d32;text-align:center;font-size:19px;display:none;margin-bottom:14px}}
-.badge{{display:inline-block;background:#f57c00;color:#fff;padding:4px 14px;border-radius:20px;font-size:17px;font-weight:bold;margin-left:8px}}
+.info-lbl{{font-size:14px;color:var(--sub-text);margin-bottom:4px}}
+.info-val{{font-size:20px;font-weight:bold;color:var(--text);margin-bottom:14px}}
+.form-grp{{margin-bottom:14px}}
+.loader{{text-align:center;padding:48px;color:var(--sub-text);font-size:18px}}
+.errmsg{{background:#fff0f0;border:2px solid #c62828;border-radius:10px;padding:18px;color:#b71c1c;text-align:center;font-size:18px;line-height:1.6}}
+.ok-msg{{background:#e8f5e9;border:2px solid #43a047;border-radius:8px;padding:12px;color:#2e7d32;text-align:center;font-size:18px;display:none;margin-bottom:12px}}
+.badge{{display:inline-block;background:#f57c00;color:#fff;padding:4px 12px;border-radius:20px;font-size:16px;font-weight:bold;margin-left:8px}}
 </style>
 </head>
 <body>
-<div class="hd">
+<div class="retro-header">
   <h1>🏠 マイページ</h1>
   <p id="greeting"></p>
 </div>
@@ -2061,8 +2051,8 @@ body{{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:20px;backg
   <div id="content" style="display:none">
 
     <!-- 利用状況 -->
-    <div class="card">
-      <div class="card-ttl">📊 今日の利用状況</div>
+    <div class="retro-card">
+      <div class="retro-section-title">📊 今日の利用状況</div>
       <div class="row">
         <span class="lbl">今日の残り回数</span>
         <span class="val" id="v-remaining">-</span>
@@ -2074,8 +2064,8 @@ body{{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:20px;backg
     </div>
 
     <!-- 登録情報 -->
-    <div class="card">
-      <div class="card-ttl">👤 登録情報</div>
+    <div class="retro-card">
+      <div class="retro-section-title">👤 登録情報</div>
       <div class="info-lbl">お住まい</div>
       <div class="info-val" id="v-location">-</div>
       <div class="info-lbl">生年月日</div>
@@ -2083,26 +2073,26 @@ body{{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:20px;backg
     </div>
 
     <!-- 編集フォーム -->
-    <div class="card">
-      <div class="card-ttl">✏️ 登録情報を変更する</div>
+    <div class="retro-card">
+      <div class="retro-section-title">✏️ 登録情報を変更する</div>
       <div id="ok-msg" class="ok-msg">✅ 保存しました！</div>
       <div class="form-grp">
-        <label class="form-lbl">お名前（任意）</label>
-        <input class="form-inp" id="f-name" type="text" placeholder="例：田中 花子">
+        <label class="retro-label">お名前（任意）</label>
+        <input class="retro-input" id="f-name" type="text" placeholder="例：田中 花子">
       </div>
       <div class="form-grp">
-        <label class="form-lbl">都道府県</label>
-        <select class="form-inp" id="f-pref"></select>
+        <label class="retro-label">都道府県</label>
+        <select class="retro-select" id="f-pref"></select>
       </div>
       <div class="form-grp">
-        <label class="form-lbl">市区町村</label>
-        <select class="form-inp" id="f-city"></select>
+        <label class="retro-label">市区町村</label>
+        <select class="retro-select" id="f-city"></select>
       </div>
       <div class="form-grp">
-        <label class="form-lbl">生年月日</label>
-        <input class="form-inp" id="f-birth" type="text" placeholder="例：1950年1月1日">
+        <label class="retro-label">生年月日</label>
+        <input class="retro-input" id="f-birth" type="text" placeholder="例：1950年1月1日">
       </div>
-      <button class="btn btn-save" onclick="save()">💾 保存する</button>
+      <button class="retro-btn" onclick="save()">💾 保存する</button>
     </div>
 
   </div><!-- /content -->
@@ -2248,6 +2238,7 @@ def liff_base():
 @app.route("/liff/mypage", methods=["GET"])
 def liff_mypage():
     html = _LIFF_HTML.format(
+        retro_css=_RETRO_CSS,
         liff_id=LIFF_ID,
         prefs_json=json.dumps(_PREFECTURES, ensure_ascii=False),
         cities_json=json.dumps(_CITIES, ensure_ascii=False),
@@ -2332,30 +2323,21 @@ _LIFF_INVITE_HTML = """\
 <title>友達を紹介する</title>
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
-*{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:20px;background:#f1f8f3;color:#333;line-height:1.7}}
-.hd{{background:#06c755;color:#fff;padding:22px 16px;text-align:center}}
-.hd h1{{font-size:26px;font-weight:bold}}
-.hd p{{font-size:18px;margin-top:6px;opacity:.9}}
+{retro_css}
 .wrap{{max-width:480px;margin:0 auto;padding:16px}}
-.card{{background:#fff;border-radius:14px;padding:22px;margin-bottom:16px;box-shadow:0 2px 10px rgba(0,0,0,.08)}}
-.card-ttl{{font-size:17px;font-weight:bold;color:#06c755;border-bottom:2px solid #06c755;padding-bottom:8px;margin-bottom:16px}}
-.code-box{{background:#f1f8f3;border:3px solid #06c755;border-radius:14px;padding:20px;text-align:center;margin:16px 0}}
-.code-lbl{{font-size:17px;color:#555;margin-bottom:6px}}
-.code-val{{font-size:46px;font-weight:bold;color:#06c755;letter-spacing:6px;font-family:monospace}}
-.merit{{background:#fffde7;border-radius:10px;padding:16px;font-size:20px;line-height:1.8;color:#555;text-align:center}}
-.merit strong{{color:#e65100;font-size:22px}}
-.btn{{display:block;width:100%;padding:20px;font-size:22px;font-weight:bold;border:none;border-radius:12px;cursor:pointer;text-align:center;margin-top:12px;transition:opacity .15s}}
-.btn:active{{opacity:.8}}
-.btn-line{{background:#06c755;color:#fff}}
-.btn-copy{{background:#fff;color:#06c755;border:3px solid #06c755}}
-.loader{{text-align:center;padding:48px;color:#888;font-size:20px}}
-.errmsg{{background:#fff0f0;border:2px solid #e53935;border-radius:10px;padding:18px;color:#b71c1c;text-align:center;font-size:19px;line-height:1.6}}
+.code-box{{background:var(--bg);border:3px solid var(--border);border-radius:14px;padding:20px;text-align:center;margin:16px 0}}
+.code-lbl{{font-size:16px;color:var(--sub-text);margin-bottom:8px}}
+.code-val{{font-size:44px;font-weight:bold;color:var(--header-bg);letter-spacing:6px;font-family:monospace}}
+.merit{{background:#fffff0;border:2px dashed var(--border);border-radius:10px;padding:16px;font-size:18px;line-height:1.8;color:var(--text);text-align:center}}
+.merit strong{{color:var(--header-bg);font-size:20px}}
+.retro-btn-outline{{display:block;width:100%;background:#fffff0;color:var(--header-bg);border:3px solid var(--header-bg);border-radius:8px;padding:14px;font-size:16px;font-weight:bold;text-align:center;cursor:pointer;margin-top:12px}}
+.loader{{text-align:center;padding:48px;color:var(--sub-text);font-size:18px}}
+.errmsg{{background:#fff0f0;border:2px solid #c62828;border-radius:10px;padding:18px;color:#b71c1c;text-align:center;font-size:18px;line-height:1.6}}
 .ok-copy{{background:#e8f5e9;border:2px solid #43a047;border-radius:8px;padding:10px;color:#2e7d32;text-align:center;font-size:18px;display:none;margin-top:10px}}
 </style>
 </head>
 <body>
-<div class="hd">
+<div class="retro-header">
   <h1>🎁 友達を紹介しよう！</h1>
   <p>紹介すると2人に5回プレゼント</p>
 </div>
@@ -2365,8 +2347,8 @@ body{{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:20px;backg
   <div id="content" style="display:none">
 
     <!-- 紹介コード -->
-    <div class="card">
-      <div class="card-ttl">🔑 あなたの紹介コード</div>
+    <div class="retro-card">
+      <div class="retro-section-title">🔑 あなたの紹介コード</div>
       <div class="code-box">
         <div class="code-lbl">このコードをお友達に教えてください</div>
         <div class="code-val" id="ref-code">------</div>
@@ -2378,12 +2360,12 @@ body{{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:20px;backg
     </div>
 
     <!-- シェアボタン -->
-    <div class="card">
-      <div class="card-ttl">📤 シェアする</div>
-      <button class="btn btn-line" onclick="shareLine()">
+    <div class="retro-card">
+      <div class="retro-section-title">📤 シェアする</div>
+      <button class="retro-btn" onclick="shareLine()">
         💬 LINEでシェアする
       </button>
-      <button class="btn btn-copy" onclick="copyText()">
+      <button class="retro-btn-outline" onclick="copyText()">
         📋 コピーする
       </button>
       <div id="ok-copy" class="ok-copy">✅ コピーしました！</div>
@@ -2482,6 +2464,7 @@ function showErr(msg){{
 @app.route("/liff/invite", methods=["GET"])
 def liff_invite():
     html = _LIFF_INVITE_HTML.format(
+        retro_css=_RETRO_CSS,
         liff_invite_id=LIFF_INVITE_ID,
         add_url=_LINE_ADD_URL,
     )
@@ -2518,90 +2501,87 @@ _LIFF_FAQ_HTML = """\
 <title>よくある質問</title>
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
-*{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:20px;background:#f0f4fa;color:#222;line-height:1.75;padding-bottom:100px}}
-/* ヘッダー */
-.hd{{background:#1565c0;color:#fff;padding:20px 16px 16px;text-align:center}}
-.hd h1{{font-size:26px;font-weight:bold;letter-spacing:.04em}}
-.hd p{{font-size:16px;opacity:.88;margin-top:4px}}
+{retro_css}
+body{{padding-bottom:100px}}
 /* 検索バー */
-.search-wrap{{background:#fff;padding:14px 16px;position:sticky;top:0;z-index:20;box-shadow:0 2px 8px rgba(0,0,0,.12)}}
+.search-wrap{{background:var(--card-bg);padding:14px 16px;position:sticky;top:0;z-index:20;box-shadow:0 2px 8px rgba(0,0,0,.12);border-bottom:2px solid var(--border)}}
 .search-inner{{display:flex;gap:10px;max-width:600px;margin:0 auto}}
 .search-inner input{{
-  flex:1;font-size:20px;padding:14px 16px;
-  border:2px solid #1565c0;border-radius:12px;
-  outline:none;color:#222;
+  flex:1;font-size:18px;padding:12px 14px;
+  border:2px solid var(--border);border-radius:8px;
+  outline:none;color:var(--text);background:#fffff0;
 }}
-.search-inner input:focus{{border-color:#0d47a1;box-shadow:0 0 0 3px rgba(21,101,192,.2)}}
+.search-inner input:focus{{border-color:var(--header-bg);box-shadow:0 0 0 3px rgba(139,26,26,.15)}}
 .search-inner button{{
-  font-size:18px;padding:14px 20px;
-  background:#1565c0;color:#fff;border:none;border-radius:12px;
+  font-size:16px;padding:12px 18px;
+  background:var(--btn-bg);color:var(--btn-text);border:none;border-radius:8px;
   cursor:pointer;font-weight:bold;white-space:nowrap;
+  box-shadow:2px 3px 0 #5C1010;
 }}
-.search-inner button:active{{background:#0d47a1}}
+.search-inner button:active{{transform:translateY(2px);box-shadow:none}}
 /* ジャンルタブ */
-.genre-wrap{{background:#fff;border-bottom:2px solid #e0e8f8;overflow-x:auto}}
+.genre-wrap{{background:var(--card-bg);border-bottom:2px solid var(--border);overflow-x:auto}}
 .genre-wrap::-webkit-scrollbar{{display:none}}
-.genre-list{{display:flex;padding:12px 14px;gap:10px;min-width:max-content}}
+.genre-list{{display:flex;padding:10px 12px;gap:8px;min-width:max-content}}
 .g-btn{{
-  font-size:17px;padding:10px 20px;
-  border:2px solid #1565c0;background:#fff;color:#1565c0;
-  border-radius:24px;cursor:pointer;white-space:nowrap;
+  font-size:15px;padding:8px 16px;
+  border:2px solid var(--border);background:var(--bg);color:var(--text);
+  border-radius:20px;cursor:pointer;white-space:nowrap;
   font-weight:bold;transition:background .15s,color .15s;
 }}
-.g-btn.active{{background:#1565c0;color:#fff}}
-.g-btn:active{{opacity:.8}}
+.g-btn.active{{background:var(--header-bg);color:var(--header-text);border-color:var(--header-bg)}}
 /* 件数 */
-.count-bar{{max-width:600px;margin:12px auto 4px;padding:0 16px;font-size:16px;color:#888}}
+.count-bar{{max-width:600px;margin:10px auto 4px;padding:0 16px;font-size:15px;color:var(--sub-text)}}
 /* FAQリスト */
-.faq-wrap{{max-width:600px;margin:0 auto;padding:0 14px 16px}}
+.faq-wrap{{max-width:600px;margin:0 auto;padding:0 12px 16px}}
 .faq-item{{
-  background:#fff;border-radius:14px;margin-bottom:12px;
-  box-shadow:0 2px 8px rgba(0,0,0,.08);overflow:hidden;
+  background:var(--card-bg);border:2px solid var(--border);border-radius:10px;margin-bottom:10px;
+  box-shadow:2px 3px 0 var(--border);overflow:hidden;
 }}
 .faq-q{{
-  padding:18px 52px 18px 18px;font-size:20px;font-weight:bold;
-  cursor:pointer;position:relative;color:#1565c0;
-  border-left:5px solid #1565c0;
+  padding:16px 48px 16px 16px;font-size:18px;font-weight:bold;
+  cursor:pointer;position:relative;color:var(--header-bg);
+  border-left:5px solid var(--header-bg);
   -webkit-tap-highlight-color:rgba(0,0,0,.06);
 }}
 .faq-q::after{{
-  content:'▼';position:absolute;right:18px;top:50%;
-  transform:translateY(-50%);font-size:18px;color:#90a4ae;
+  content:'▼';position:absolute;right:16px;top:50%;
+  transform:translateY(-50%);font-size:16px;color:var(--sub-text);
   transition:transform .25s;
 }}
 .faq-item.open .faq-q::after{{transform:translateY(-50%) rotate(180deg)}}
-.faq-item.open .faq-q{{color:#0d47a1;background:#f0f4fa}}
+.faq-item.open .faq-q{{background:var(--bg)}}
 .faq-a{{
-  display:none;padding:16px 18px 20px;
-  font-size:19px;color:#333;border-top:1px solid #e8eef8;
+  display:none;padding:14px 16px 18px;
+  font-size:17px;color:var(--text);border-top:1px dashed var(--divider);
   line-height:1.85;white-space:pre-wrap;word-break:break-all;
 }}
 .faq-item.open .faq-a{{display:block}}
 .genre-badge{{
-  display:inline-block;font-size:13px;
-  background:#e3f2fd;color:#1565c0;
-  padding:2px 9px;border-radius:8px;
+  display:inline-block;font-size:12px;
+  background:var(--bg);color:var(--header-bg);border:1px solid var(--border);
+  padding:2px 8px;border-radius:6px;
   margin-right:8px;font-weight:normal;vertical-align:middle;
 }}
 /* 状態表示 */
-.loader{{text-align:center;padding:56px 16px;color:#90a4ae;font-size:20px}}
-.loader-spin{{display:inline-block;width:40px;height:40px;border:4px solid #e0e8f8;border-top-color:#1565c0;border-radius:50%;animation:spin .8s linear infinite;margin-bottom:12px}}
+.loader{{text-align:center;padding:56px 16px;color:var(--sub-text);font-size:18px}}
+.loader-spin{{display:inline-block;width:40px;height:40px;border:4px solid var(--bg);border-top-color:var(--header-bg);border-radius:50%;animation:spin .8s linear infinite;margin-bottom:12px}}
 @keyframes spin{{to{{transform:rotate(360deg)}}}}
-.empty{{text-align:center;padding:48px 16px;color:#aaa;font-size:20px}}
+.empty{{text-align:center;padding:48px 16px;color:var(--sub-text);font-size:18px}}
 /* AIボタン */
-.ai-btn-wrap{{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:2px solid #e0e8f8;padding:14px 16px;z-index:30}}
+.ai-btn-wrap{{position:fixed;bottom:0;left:0;right:0;background:var(--card-bg);border-top:3px solid var(--border);padding:12px 16px;z-index:30}}
 .ai-btn{{
   display:block;width:100%;max-width:600px;margin:0 auto;
-  font-size:20px;font-weight:bold;padding:16px;
-  background:#ff6f00;color:#fff;border:none;border-radius:14px;
+  font-size:18px;font-weight:bold;padding:16px;
+  background:var(--btn-bg);color:var(--btn-text);border:none;border-radius:8px;
   cursor:pointer;text-align:center;letter-spacing:.05em;
+  box-shadow:2px 3px 0 #5C1010;
 }}
-.ai-btn:active{{background:#e65100}}
+.ai-btn:active{{transform:translateY(2px);box-shadow:none}}
 </style>
 </head>
 <body>
-<div class="hd">
+<div class="retro-header">
   <h1>📖 よくある質問</h1>
   <p>知りたいことを検索、またはジャンルから探せます</p>
 </div>
@@ -2731,7 +2711,7 @@ load();
 def liff_faq():
     import json as _json
     genres_json = _json.dumps(_LIFF_FAQ_GENRES, ensure_ascii=False)
-    html = _LIFF_FAQ_HTML.format(liff_faq_id=LIFF_FAQ_ID, genres_json=genres_json)
+    html = _LIFF_FAQ_HTML.format(retro_css=_RETRO_CSS, liff_faq_id=LIFF_FAQ_ID, genres_json=genres_json)
     return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
 
@@ -2777,35 +2757,32 @@ _LIFF_SEARCH_HTML = """\
 <title>お店・病院を探す</title>
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
-*{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:20px;background:#f5f5f5;color:#333;line-height:1.7}}
-.hd{{background:#2e7d32;color:#fff;padding:18px 16px;text-align:center}}
-.hd h1{{font-size:24px;font-weight:bold}}
-.tabs{{display:flex;background:#fff;border-bottom:3px solid #2e7d32}}
-.tab{{flex:1;padding:14px;text-align:center;font-size:19px;cursor:pointer;color:#888;font-weight:bold}}
-.tab.active{{color:#2e7d32;border-bottom:3px solid #2e7d32;margin-bottom:-3px}}
-.search-bar{{background:#fff;padding:12px 16px;display:flex;gap:8px;box-shadow:0 2px 6px rgba(0,0,0,.08)}}
-.search-bar input{{flex:1;font-size:20px;padding:12px;border:2px solid #ccc;border-radius:10px}}
-.search-bar button{{font-size:18px;padding:12px 18px;background:#2e7d32;color:#fff;border:none;border-radius:10px;cursor:pointer}}
+{retro_css}
+.tabs{{display:flex;background:var(--card-bg);border-bottom:3px solid var(--border)}}
+.tab{{flex:1;padding:14px;text-align:center;font-size:18px;cursor:pointer;color:var(--sub-text);font-weight:bold}}
+.tab.active{{color:var(--header-bg);border-bottom:3px solid var(--header-bg);margin-bottom:-3px}}
+.search-bar{{background:var(--card-bg);padding:12px 16px;display:flex;gap:8px;border-bottom:2px solid var(--border)}}
+.search-bar input{{flex:1;font-size:18px;padding:10px;border:2px solid var(--border);border-radius:8px;background:#fffff0;color:var(--text)}}
+.search-bar button{{font-size:16px;padding:10px 16px;background:var(--btn-bg);color:var(--btn-text);border:none;border-radius:8px;cursor:pointer;font-weight:bold;box-shadow:2px 3px 0 #5C1010}}
+.search-bar button:active{{transform:translateY(2px);box-shadow:none}}
 .wrap{{padding:12px 16px;max-width:600px;margin:0 auto}}
-.card{{background:#fff;border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 1px 6px rgba(0,0,0,.08)}}
-.card-name{{font-size:22px;font-weight:bold;color:#2e7d32;margin-bottom:6px}}
-.card-info{{font-size:18px;color:#555;margin-bottom:4px}}
-.card-info span{{color:#888;font-size:16px;margin-right:6px}}
+.card-name{{font-size:20px;font-weight:bold;color:var(--header-bg);margin-bottom:6px}}
+.card-info{{font-size:16px;color:var(--sub-text);margin-bottom:4px}}
+.card-info span{{color:var(--border);font-size:14px;margin-right:6px}}
 .card-btns{{display:flex;gap:8px;margin-top:10px}}
-.cbtn{{flex:1;padding:10px;font-size:17px;border-radius:8px;border:none;cursor:pointer;text-align:center;text-decoration:none;display:block}}
-.cbtn-map{{background:#e8f5e9;color:#2e7d32;border:2px solid #2e7d32}}
-.cbtn-call{{background:#e3f2fd;color:#1565c0;border:2px solid #1565c0}}
-.loader{{text-align:center;padding:48px;color:#888;font-size:20px}}
-.empty{{text-align:center;padding:40px;color:#aaa;font-size:19px}}
+.cbtn{{flex:1;padding:10px;font-size:16px;border-radius:8px;border:none;cursor:pointer;text-align:center;text-decoration:none;display:block;font-weight:bold}}
+.cbtn-map{{background:var(--bg);color:var(--header-bg);border:2px solid var(--border)}}
+.cbtn-call{{background:#fffff0;color:#1565c0;border:2px solid #1565c0}}
+.loader{{text-align:center;padding:48px;color:var(--sub-text);font-size:18px}}
+.empty{{text-align:center;padding:40px;color:var(--sub-text);font-size:18px}}
 .hospital-links{{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}}
-.hlink{{background:#fff;border:2px solid #2e7d32;border-radius:12px;padding:16px;text-align:center;text-decoration:none;color:#2e7d32;font-size:18px;font-weight:bold;display:block}}
-.hlink:active{{background:#e8f5e9}}
-.stars{{color:#f57c00;font-size:18px}}
+.hlink{{background:var(--card-bg);border:2px solid var(--border);border-radius:10px;padding:14px;text-align:center;text-decoration:none;color:var(--header-bg);font-size:17px;font-weight:bold;display:block;box-shadow:2px 3px 0 var(--border)}}
+.hlink:active{{transform:translateY(2px);box-shadow:none}}
+.stars{{color:#f57c00;font-size:17px}}
 </style>
 </head>
 <body>
-<div class="hd"><h1>🔍 お店・病院を探す</h1></div>
+<div class="retro-header"><h1>🔍 お店・病院を探す</h1></div>
 <div class="tabs">
   <div class="tab active" onclick="setTab('restaurant')" id="tab-restaurant">🍽️ お店</div>
   <div class="tab"        onclick="setTab('hospital')"   id="tab-hospital">🏥 病院・施設</div>
@@ -2842,7 +2819,7 @@ function load(){{
       var stars='';
       if(it.rating){{for(var i=0;i<Math.round(it.rating);i++)stars+='★';}}
       var mapQ=encodeURIComponent((it.name||'')+'　'+(it.address||''));
-      html+='<div class="card">'
+      html+='<div class="retro-card">'
           +'<div class="card-name">'+esc(it.name)+'</div>'
           +(it.genre?'<div class="card-info"><span>ジャンル</span>'+esc(it.genre)+'</div>':'')
           +(it.area?'<div class="card-info"><span>エリア</span>'+esc(it.area)+'</div>':'')
@@ -2864,7 +2841,7 @@ function showHospitalLinks(){{
     ['眼科','眼科 '+area],['救急・夜間','救急病院 '+area],
     ['市役所','市役所 '+area],['図書館','図書館 '+area],
   ];
-  var html='<div class="card"><div class="card-name">近くの病院・施設をGoogleマップで探す</div><div class="hospital-links">';
+  var html='<div class="retro-card"><div class="card-name">近くの病院・施設をGoogleマップで探す</div><div class="hospital-links">';
   links.forEach(function(l){{
     html+='<a class="hlink" href="https://maps.google.com/?q='+encodeURIComponent(l[1])+'" target="_blank">'+l[0]+'</a>';
   }});
@@ -2882,7 +2859,7 @@ load();
 @app.route("/liff/search", methods=["GET"])
 def liff_search():
     area = _AREA_KEYWORDS[0] if _AREA_KEYWORDS else ""
-    html = _LIFF_SEARCH_HTML.format(liff_search_id=LIFF_SEARCH_ID, area=area)
+    html = _LIFF_SEARCH_HTML.format(retro_css=_RETRO_CSS, liff_search_id=LIFF_SEARCH_ID, area=area)
     return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
 
@@ -2916,36 +2893,32 @@ _LIFF_MAP_HTML = """\
 <title>地図・周辺検索</title>
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
-*{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:20px;background:#f5f5f5;color:#333;line-height:1.7}}
-.hd{{background:#1565c0;color:#fff;padding:18px 16px;text-align:center}}
-.hd h1{{font-size:24px;font-weight:bold}}
-.loc-bar{{display:flex;align-items:center;gap:8px;padding:12px 16px;background:#fff;font-size:18px;border-bottom:1px solid #e0e0e0}}
+{retro_css}
+.loc-bar{{display:flex;align-items:center;gap:8px;padding:12px 16px;background:var(--card-bg);font-size:16px;border-bottom:2px solid var(--border);color:var(--sub-text)}}
 .loc-bar.success{{color:#2e7d32}}
 .loc-bar.error{{color:#c62828;background:#fff8f8}}
-.cat-wrap{{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 16px;background:#fff;border-bottom:2px solid #e0e0e0}}
-.cat-btn{{padding:16px 8px;font-size:19px;font-weight:bold;border:3px solid #1565c0;border-radius:14px;background:#fff;color:#1565c0;cursor:pointer;text-align:center;line-height:1.4}}
-.cat-btn:active,.cat-btn.active{{background:#1565c0;color:#fff}}
+.cat-wrap{{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px 16px;background:var(--card-bg);border-bottom:3px solid var(--border)}}
+.cat-btn{{padding:14px 8px;font-size:17px;font-weight:bold;border:3px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text);cursor:pointer;text-align:center;line-height:1.4}}
+.cat-btn:active,.cat-btn.active{{background:var(--header-bg);color:var(--header-text);border-color:var(--header-bg)}}
 .cat-btn.full{{grid-column:1/-1}}
 .wrap{{padding:12px 16px;max-width:600px;margin:0 auto}}
-.card{{background:#fff;border-radius:14px;padding:18px 16px;margin-bottom:14px;box-shadow:0 2px 8px rgba(0,0,0,.09)}}
-.card-name{{font-size:22px;font-weight:bold;color:#1565c0;margin-bottom:8px}}
-.card-row{{font-size:18px;color:#555;margin-bottom:4px}}
-.card-row.addr{{font-size:17px;color:#888}}
-.open{{color:#2e7d32;font-weight:bold;background:#e8f5e9;padding:2px 8px;border-radius:6px;font-size:16px}}
-.closed{{color:#c62828;font-weight:bold;background:#fff3f3;padding:2px 8px;border-radius:6px;font-size:16px}}
+.card-name{{font-size:20px;font-weight:bold;color:var(--header-bg);margin-bottom:8px}}
+.card-row{{font-size:16px;color:var(--sub-text);margin-bottom:4px}}
+.card-row.addr{{font-size:15px;color:var(--sub-text)}}
+.open{{color:#2e7d32;font-weight:bold;background:#e8f5e9;padding:2px 8px;border-radius:6px;font-size:14px}}
+.closed{{color:#c62828;font-weight:bold;background:#fff3f3;padding:2px 8px;border-radius:6px;font-size:14px}}
 .card-btns{{display:flex;gap:10px;margin-top:12px}}
-.cbtn{{flex:1;padding:13px 8px;font-size:18px;font-weight:bold;border-radius:10px;border:none;cursor:pointer;text-align:center;text-decoration:none;display:block}}
-.cbtn-map{{background:#e8f0fe;color:#1565c0;border:2px solid #1565c0}}
-.cbtn-call{{background:#e8f5e9;color:#2e7d32;border:2px solid #2e7d32}}
-.loader{{text-align:center;padding:48px;color:#888;font-size:20px}}
-.empty{{text-align:center;padding:40px;color:#aaa;font-size:19px}}
-.note{{background:#fff9e6;border:1px solid #f0c060;border-radius:10px;padding:14px 16px;font-size:17px;color:#555;margin:14px 0}}
+.cbtn{{flex:1;padding:12px 8px;font-size:16px;font-weight:bold;border-radius:8px;border:none;cursor:pointer;text-align:center;text-decoration:none;display:block}}
+.cbtn-map{{background:var(--bg);color:var(--header-bg);border:2px solid var(--border)}}
+.cbtn-call{{background:#fffff0;color:#1565c0;border:2px solid #1565c0}}
+.loader{{text-align:center;padding:48px;color:var(--sub-text);font-size:18px}}
+.empty{{text-align:center;padding:40px;color:var(--sub-text);font-size:18px}}
+.note{{background:var(--card-bg);border:2px dashed var(--border);border-radius:10px;padding:14px 16px;font-size:16px;color:var(--sub-text);margin:14px 0}}
 </style>
 </head>
 <body>
 <div id="map-hidden" style="width:1px;height:1px;visibility:hidden;position:absolute"></div>
-<div class="hd"><h1>📍 地図・周辺検索</h1></div>
+<div class="retro-header"><h1>📍 地図・周辺検索</h1></div>
 <div id="loc-bar" class="loc-bar">⏳ 現在地を取得中...</div>
 <div class="cat-wrap">
   <button class="cat-btn" id="btn-hospital"    onclick="doSearch('hospital',   this)">🏥 病院・クリニック</button>
@@ -3064,7 +3037,7 @@ function doSearch(cat, btn) {{
           : '<span class="closed">営業時間外</span>';
       }}
       var mapsUrl = 'https://maps.google.com/?place_id=' + encodeURIComponent(place.place_id);
-      html += '<div class="card">'
+      html += '<div class="retro-card">'
         + '<div class="card-name">' + esc(place.name) + '</div>'
         + '<div class="card-row">📍 ' + distStr + (openStr ? '　' + openStr : '') + '</div>'
         + (place.vicinity ? '<div class="card-row addr">🏠 ' + esc(place.vicinity) + '</div>' : '')
@@ -3110,6 +3083,7 @@ function esc(s) {{
 @app.route("/liff/map", methods=["GET"])
 def liff_map():
     html = _LIFF_MAP_HTML.format(
+        retro_css=_RETRO_CSS,
         liff_map_id=LIFF_MAP_ID,
         google_maps_api_key=GOOGLE_MAPS_API_KEY,
     )
@@ -3127,45 +3101,42 @@ _LIFF_SCHEDULE_HTML = """\
 <title>スケジュール</title>
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
-*{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:18px;background:#fff;color:#333;padding-bottom:60px}}
-.hd{{background:#E74C3C;color:#fff;padding:16px;text-align:center}}
-.hd h1{{font-size:22px;font-weight:bold}}
-.cal-nav{{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #EEE}}
-.cal-nav button{{font-size:28px;border:none;background:none;color:#E74C3C;cursor:pointer;padding:6px 14px;line-height:1}}
-.month-label{{font-size:22px;font-weight:bold;color:#222}}
-table.cal{{width:100%;border-collapse:collapse;table-layout:fixed}}
-table.cal th{{text-align:center;padding:10px 0 8px;font-size:14px;font-weight:bold;border-bottom:2px solid #EEE;color:#555}}
-table.cal th.sun{{color:#E74C3C}}
-table.cal th.sat{{color:#888}}
-table.cal td{{text-align:center;padding:6px 2px;vertical-align:top;height:62px;cursor:pointer;border-bottom:1px solid #F5F5F5}}
-table.cal td:hover{{background:#FFF5F5}}
-table.cal td.sel{{background:#FFF0F0}}
-.dn{{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;font-size:22px;border-radius:50%;font-weight:500}}
-.dn.today{{background:#E74C3C;color:#fff;font-weight:bold}}
-.dn.sun{{color:#E74C3C}}
-.dn.sat{{color:#888}}
-.dn.out{{color:#CCC;font-size:18px}}
-.dot{{display:block;width:7px;height:7px;background:#E74C3C;border-radius:50%;margin:2px auto 0}}
-.memo-area{{padding:20px;border-top:3px solid #EEE;display:none}}
-.memo-date{{font-size:22px;font-weight:bold;color:#E74C3C;margin-bottom:16px}}
-.saved-item{{background:#F8F8F8;border-radius:10px;padding:14px 50px 14px 14px;margin-bottom:10px;position:relative}}
-.saved-content{{font-size:18px;line-height:1.65;white-space:pre-wrap;word-break:break-all}}
-.saved-time{{font-size:13px;color:#AAA;margin-top:6px}}
-.del-btn{{position:absolute;top:12px;right:12px;background:#fff;border:1px solid #DDD;border-radius:6px;color:#999;font-size:14px;padding:5px 10px;cursor:pointer}}
-.del-btn:active{{background:#FFE}}
-.empty-note{{color:#BBB;font-size:17px;text-align:center;padding:14px 0}}
+{retro_css}
+body{{padding-bottom:60px}}
+.cal-nav{{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:2px solid var(--border);background:var(--card-bg)}}
+.cal-nav button{{font-size:26px;border:none;background:none;color:var(--header-bg);cursor:pointer;padding:4px 12px;line-height:1}}
+.month-label{{font-size:20px;font-weight:bold;color:var(--text)}}
+table.cal{{width:100%;border-collapse:collapse;table-layout:fixed;background:var(--bg)}}
+table.cal th{{text-align:center;padding:10px 0 8px;font-size:13px;font-weight:bold;border-bottom:2px solid var(--border);color:var(--sub-text)}}
+table.cal th.sun{{color:var(--header-bg)}}
+table.cal th.sat{{color:var(--sub-text)}}
+table.cal td{{text-align:center;padding:6px 2px;vertical-align:top;height:58px;cursor:pointer;border-bottom:1px dashed var(--divider)}}
+table.cal td:hover{{background:var(--card-bg)}}
+table.cal td.sel{{background:var(--card-bg);outline:2px solid var(--border)}}
+.dn{{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;font-size:20px;border-radius:50%;font-weight:500;color:var(--text)}}
+.dn.today{{background:var(--header-bg);color:var(--header-text);font-weight:bold}}
+.dn.sun{{color:var(--header-bg)}}
+.dn.sat{{color:var(--sub-text)}}
+.dn.out{{color:#CCC;font-size:16px}}
+.dot{{display:block;width:7px;height:7px;background:var(--header-bg);border-radius:50%;margin:2px auto 0}}
+.memo-area{{padding:16px;border-top:3px solid var(--border);display:none;background:var(--bg)}}
+.memo-date{{font-size:20px;font-weight:bold;color:var(--header-bg);margin-bottom:14px}}
+.saved-item{{background:var(--card-bg);border:2px solid var(--border);border-radius:8px;padding:12px 48px 12px 12px;margin-bottom:10px;position:relative;box-shadow:2px 2px 0 var(--border)}}
+.saved-content{{font-size:16px;line-height:1.65;white-space:pre-wrap;word-break:break-all;color:var(--text)}}
+.saved-time{{font-size:12px;color:var(--sub-text);margin-top:6px}}
+.del-btn{{position:absolute;top:10px;right:10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--sub-text);font-size:13px;padding:4px 8px;cursor:pointer}}
+.empty-note{{color:var(--sub-text);font-size:16px;text-align:center;padding:14px 0}}
 .input-row{{display:flex;gap:10px;align-items:flex-start;margin-bottom:14px}}
-.memo-input{{flex:1;font-size:20px;border:2px solid #DDD;border-radius:10px;padding:12px;min-height:100px;resize:vertical;line-height:1.6;font-family:inherit}}
-.memo-input:focus{{outline:none;border-color:#E74C3C}}
-.mic-btn{{padding:13px 12px;font-size:24px;background:#fff;border:2px solid #DDD;border-radius:10px;cursor:pointer;flex-shrink:0;line-height:1}}
-.mic-btn.rec{{border-color:#E74C3C;background:#FFF0F0}}
-.save-btn{{display:block;width:100%;padding:16px;font-size:20px;font-weight:bold;background:#E74C3C;color:#fff;border:none;border-radius:12px;cursor:pointer}}
-.save-btn:active{{background:#C0392B}}
+.memo-input{{flex:1;font-size:18px;border:2px solid var(--border);border-radius:8px;padding:10px;min-height:100px;resize:vertical;line-height:1.6;font-family:inherit;background:#fffff0;color:var(--text)}}
+.memo-input:focus{{outline:none;border-color:var(--header-bg)}}
+.mic-btn{{padding:12px;font-size:22px;background:var(--card-bg);border:2px solid var(--border);border-radius:8px;cursor:pointer;flex-shrink:0;line-height:1}}
+.mic-btn.rec{{border-color:var(--header-bg);background:var(--bg)}}
+.save-btn{{display:block;width:100%;padding:14px;font-size:18px;font-weight:bold;background:var(--btn-bg);color:var(--btn-text);border:none;border-radius:8px;cursor:pointer;box-shadow:2px 3px 0 #5C1010}}
+.save-btn:active{{transform:translateY(2px);box-shadow:none}}
 </style>
 </head>
 <body>
-<div class="hd"><h1>📅 スケジュール</h1></div>
+<div class="retro-header"><h1>📅 スケジュール</h1></div>
 <div class="cal-nav">
   <button onclick="changeMonth(-1)">&#9664;</button>
   <span class="month-label" id="month-label"></span>
@@ -3360,7 +3331,7 @@ function esc(s){{return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").repla
 
 @app.route("/liff/schedule", methods=["GET"])
 def liff_schedule():
-    html = _LIFF_SCHEDULE_HTML.format(liff_schedule_id=LIFF_SCHEDULE_ID)
+    html = _LIFF_SCHEDULE_HTML.format(retro_css=_RETRO_CSS, liff_schedule_id=LIFF_SCHEDULE_ID)
     return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
 
@@ -3434,37 +3405,35 @@ _LIFF_MEMO_HTML = """\
 <title>メモ帳</title>
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
-*{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:18px;background:#fff;color:#333;min-height:100vh}}
-/* ヘッダー */
-.hd{{background:#2196F3;color:#fff;padding:16px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:10}}
-.hd-back{{font-size:24px;background:none;border:none;color:#fff;cursor:pointer;padding:4px 8px;display:none}}
-.hd h1{{font-size:22px;font-weight:bold}}
+{retro_css}
+/* ヘッダー（sticky対応） */
+.hd{{background:var(--header-bg);color:var(--header-text);padding:14px 16px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:10;border-bottom:3px solid var(--border)}}
+.hd-back{{font-size:22px;background:none;border:none;color:var(--header-text);cursor:pointer;padding:4px 8px;display:none}}
+.hd h1{{font-size:20px;font-weight:bold}}
 /* リスト画面 */
 #view-list{{display:block}}
-.memo-card{{display:flex;align-items:center;padding:18px 20px;border-bottom:1px solid #EEE;cursor:pointer;background:#fff}}
-.memo-card:active{{background:#F0F7FF}}
+.memo-card{{display:flex;align-items:center;padding:16px 18px;border-bottom:2px dashed var(--divider);cursor:pointer;background:var(--card-bg)}}
+.memo-card:active{{background:var(--bg)}}
 .card-body{{flex:1;min-width:0}}
-.card-title{{font-size:20px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#222}}
-.card-date{{font-size:14px;color:#AAA;margin-top:4px}}
-.card-menu{{font-size:22px;color:#CCC;padding:4px 8px;flex-shrink:0}}
-.empty-list{{text-align:center;padding:60px 20px;color:#BBB;font-size:19px}}
+.card-title{{font-size:18px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}}
+.card-date{{font-size:13px;color:var(--sub-text);margin-top:4px}}
+.card-menu{{font-size:20px;color:var(--border);padding:4px 8px;flex-shrink:0}}
+.empty-list{{text-align:center;padding:60px 20px;color:var(--sub-text);font-size:18px}}
 /* FAB */
-.fab{{position:fixed;bottom:28px;right:24px;width:60px;height:60px;border-radius:50%;background:#2196F3;color:#fff;font-size:34px;border:none;cursor:pointer;box-shadow:0 4px 14px rgba(33,150,243,.45);display:flex;align-items:center;justify-content:center;line-height:1}}
-.fab:active{{background:#1976D2}}
+.fab{{position:fixed;bottom:28px;right:24px;width:60px;height:60px;border-radius:50%;background:var(--btn-bg);color:var(--btn-text);font-size:32px;border:none;cursor:pointer;box-shadow:3px 4px 0 #5C1010;display:flex;align-items:center;justify-content:center;line-height:1}}
+.fab:active{{transform:translateY(2px);box-shadow:none}}
 /* 編集画面 */
-#view-edit{{display:none;padding:20px}}
-.edit-label{{font-size:16px;color:#888;margin-bottom:8px}}
-.memo-textarea{{width:100%;font-size:20px;border:2px solid #DDD;border-radius:10px;padding:14px;min-height:220px;resize:vertical;line-height:1.65;font-family:inherit}}
-.memo-textarea:focus{{outline:none;border-color:#2196F3}}
+#view-edit{{display:none;padding:16px}}
+.edit-label{{font-size:15px;color:var(--sub-text);margin-bottom:8px;font-weight:bold}}
+.memo-textarea{{width:100%;font-size:18px;border:2px solid var(--border);border-radius:8px;padding:12px;min-height:220px;resize:vertical;line-height:1.65;font-family:inherit;background:#fffff0;color:var(--text)}}
+.memo-textarea:focus{{outline:none;border-color:var(--header-bg)}}
 .mic-row{{display:flex;justify-content:flex-end;margin-top:10px}}
-.mic-btn{{padding:12px 16px;font-size:22px;background:#fff;border:2px solid #DDD;border-radius:10px;cursor:pointer}}
-.mic-btn.rec{{border-color:#2196F3;background:#E3F2FD}}
-.btn-save{{display:block;width:100%;margin-top:18px;padding:16px;font-size:20px;font-weight:bold;background:#2196F3;color:#fff;border:none;border-radius:12px;cursor:pointer}}
-.btn-save:active{{background:#1976D2}}
-.btn-del{{display:block;width:100%;margin-top:12px;padding:14px;font-size:18px;font-weight:bold;background:#fff;color:#E74C3C;border:2px solid #E74C3C;border-radius:12px;cursor:pointer}}
-.btn-del:active{{background:#FFF5F5}}
-.loader{{text-align:center;padding:40px;color:#AAA;font-size:18px}}
+.mic-btn{{padding:10px 14px;font-size:20px;background:var(--card-bg);border:2px solid var(--border);border-radius:8px;cursor:pointer}}
+.mic-btn.rec{{border-color:var(--header-bg);background:var(--bg)}}
+.btn-save{{display:block;width:100%;margin-top:16px;padding:14px;font-size:18px;font-weight:bold;background:var(--btn-bg);color:var(--btn-text);border:none;border-radius:8px;cursor:pointer;box-shadow:2px 3px 0 #5C1010}}
+.btn-save:active{{transform:translateY(2px);box-shadow:none}}
+.btn-del{{display:block;width:100%;margin-top:10px;padding:12px;font-size:17px;font-weight:bold;background:var(--bg);color:#c62828;border:2px solid #c62828;border-radius:8px;cursor:pointer}}
+.loader{{text-align:center;padding:40px;color:var(--sub-text);font-size:18px}}
 </style>
 </head>
 <body>
@@ -3650,7 +3619,7 @@ function esc(s){{return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").repla
 
 @app.route("/liff/memo", methods=["GET"])
 def liff_memo():
-    html = _LIFF_MEMO_HTML.format(liff_memo_id=LIFF_MEMO_ID)
+    html = _LIFF_MEMO_HTML.format(retro_css=_RETRO_CSS, liff_memo_id=LIFF_MEMO_ID)
     return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
 
