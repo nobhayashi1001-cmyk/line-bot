@@ -1,5 +1,5 @@
 """
-LINE リッチメニュー セットアップスクリプト
+LINE リッチメニュー セットアップスクリプト（らくらくスマートフォン風デザイン）
 
 使い方:
   export LINE_CHANNEL_ACCESS_TOKEN=your_token
@@ -28,106 +28,123 @@ HEADERS_JSON = {
     "Content-Type": "application/json",
 }
 
-# リッチメニュー画像サイズ（LINE 推奨: 2500×1686）
-W, H = 2500, 1686
+# リッチメニュー画像サイズ（2/3サイズ: 2500×1124）
+W, H = 2500, 1124
 COL, ROW = 2, 3           # 2列×3行
-CW, CH = W // COL, H // ROW  # 1250 × 562
+CW, CH = W // COL, H // ROW  # 1250 × 374
+
+# デザイン定数
+BG_COLOR    = "#8B1A1A"   # 濃いえんじ色
+WHITE       = "#FFFFFF"
+DIVIDER_W   = 4           # 区切り線の太さ (px)
+# フォントサイズ（画像座標系: 2500px幅基準）
+FONT_SIZE_LG = 148        # 1行ラベル用
+FONT_SIZE_SM = 118        # 2行ラベル用
 
 # ── ボタン定義（2列×3行・6ボタン）──────────────────────────────
-# (ラベル, 背景色, 送信メッセージ)
+# (ラベル, ※未使用カラー, アクション)
+# ラベル形式: "絵文字 テキスト"（スペース区切り）
+
+_LIFF_BASE = "https://liff.line.me/2009711933-tXV7CqW9"
+
 _COMMON = [
-    ("相談する",   "#4A90D9", "相談する"),
-    ("探す",       "#E8734A", "探す"),
-    ("知る",       "#5BAD6F", "知る"),
-    ("つながる",   "#8B6BB1", "つながる"),
-    ("友達に紹介", "#D95B7A", "友達に紹介"),
+    ("相談する",   "#4A90D9", {"type": "message", "text": "相談する"}),
+    ("探す",       "#E8734A", {"type": "uri",     "uri":  f"{_LIFF_BASE}/map"}),
+    ("知る",       "#5BAD6F", {"type": "message", "text": "知る"}),
+    ("つながる",   "#8B6BB1", {"type": "message", "text": "つながる"}),
+    ("友達に紹介", "#D95B7A", {"type": "uri",     "uri":  f"{_LIFF_BASE}/invite"}),
 ]
 
 FREE_BUTTONS = _COMMON + [
-    ("会員登録", "#C8A000", "会員登録"),
+    ("会員登録", "#C8A000", {"type": "uri", "uri": f"{_LIFF_BASE}/mypage"}),
 ]
 
 PAID_BUTTONS = _COMMON + [
-    ("AIに直接相談", "#C8A000", "AIに直接相談"),
+    ("AI相談", "#C8A000", {"type": "message", "text": "AIに直接相談"}),
 ]
 
 
-def _load_fonts():
-    """システムフォントを取得する。なければデフォルトフォントを返す。"""
+# ── フォント読み込み ─────────────────────────────────────────────
+
+def _load_jp_font(size: int) -> ImageFont.FreeTypeFont:
+    """日本語対応フォントを読み込む。"""
     paths = [
         "/System/Library/Fonts/ヒラギノ角ゴシック W6.ttc",
+        "/System/Library/Fonts/Hiragino Sans GB.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
         "/usr/share/fonts/noto-cjk/NotoSansCJK-Bold.ttc",
         "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
     ]
     for path in paths:
         try:
-            large = ImageFont.truetype(path, 160)
-            small = ImageFont.truetype(path, 130)
-            return large, small
+            return ImageFont.truetype(path, size)
         except Exception:
             continue
-    default = ImageFont.load_default()
-    return default, default
+    return ImageFont.load_default()
 
 
-def _split_label(label: str) -> list[str]:
-    """6文字超のラベルを2行に分割する。"""
-    if len(label) <= 5:
-        return [label]
-    if "・" in label:
-        idx = label.index("・") + 1
-        return [label[:idx], label[idx:]]
-    mid = len(label) // 2
-    return [label[:mid], label[mid:]]
 
+def _split_text(text: str) -> list[str]:
+    """5文字超のテキストを2行に分割する。"""
+    if len(text) <= 5:
+        return [text]
+    mid = len(text) // 2
+    return [text[:mid], text[mid:]]
+
+
+# ── 画像生成 ─────────────────────────────────────────────────────
 
 def make_image(buttons: list, output_path: str) -> str:
-    """ボタン定義からリッチメニュー画像を生成し、パスを返す。"""
-    font_large, font_small = _load_fonts()
-    img = Image.new("RGB", (W, H), "#FFFFFF")
+    """らくらくスマートフォン風リッチメニュー画像を生成し、パスを返す。"""
+    font_lg = _load_jp_font(FONT_SIZE_LG)
+    font_sm = _load_jp_font(FONT_SIZE_SM)
+
+    img  = Image.new("RGB", (W, H), BG_COLOR)
     draw = ImageDraw.Draw(img)
 
-    for idx, (label, accent, _) in enumerate(buttons):
+    # ── 区切り線（行・列） ────────────────────────────────────────
+    for r in range(1, ROW):
+        y = r * CH
+        draw.line([(0, y), (W, y)], fill=WHITE, width=DIVIDER_W)
+    for c in range(1, COL):
+        x = c * CW
+        draw.line([(x, 0), (x, H)], fill=WHITE, width=DIVIDER_W)
+    # 外枠
+    draw.rectangle([0, 0, W - 1, H - 1], outline=WHITE, width=DIVIDER_W)
+
+    # ── 各ボタン描画（テキスト中央配置） ─────────────────────────
+    for idx, (label, _, _) in enumerate(buttons):
         col = idx % COL
         row = idx // COL
-        x0, y0 = col * CW, row * CH
-        x1, y1 = x0 + CW, y0 + CH
+        cx  = col * CW + CW // 2
+        cy  = row * CH + CH // 2
 
-        # 背景：白・枠線：薄いグレー
-        draw.rectangle([x0, y0, x1, y1], fill="#FFFFFF")
-        draw.rectangle([x0, y0, x1, y1], outline="#DDDDDD", width=6)
-
-        # ボタン下部にアクセントカラーの太線を引く
-        draw.rectangle([x0 + 10, y1 - 18, x1 - 10, y1 - 6], fill=accent)
-
-        cx = x0 + CW // 2
-        cy = y0 + CH // 2 - 20  # アクセントライン分だけ少し上に
-
-        lines = _split_label(label)
-        font = font_small if len(lines) > 1 else font_large
-        line_h = CH // 4
+        lines    = _split_text(label)
+        font_txt = font_sm if len(lines) > 1 else font_lg
+        line_gap = FONT_SIZE_SM + 20
 
         if len(lines) == 1:
-            draw.text((cx, cy), lines[0], font=font, fill=accent, anchor="mm")
+            draw.text((cx, cy), lines[0], font=font_txt, fill=WHITE, anchor="mm")
         else:
-            draw.text((cx, cy - line_h // 2), lines[0], font=font, fill=accent, anchor="mm")
-            draw.text((cx, cy + line_h // 2), lines[1], font=font, fill=accent, anchor="mm")
+            draw.text((cx, cy - line_gap // 2), lines[0], font=font_txt, fill=WHITE, anchor="mm")
+            draw.text((cx, cy + line_gap // 2), lines[1], font=font_txt, fill=WHITE, anchor="mm")
 
     img.save(output_path, "JPEG", quality=95)
     print(f"画像を生成しました: {output_path} ({W}x{H})")
     return output_path
 
 
+# ── LINE API 操作 ────────────────────────────────────────────────
+
 def create_rich_menu(buttons: list, menu_name: str) -> str:
     """リッチメニューを LINE API に登録し、richMenuId を返す。"""
     areas = []
-    for idx, (_, _, msg) in enumerate(buttons):
+    for idx, (_, _, action) in enumerate(buttons):
         col = idx % COL
         row = idx // COL
         areas.append({
             "bounds": {"x": col * CW, "y": row * CH, "width": CW, "height": CH},
-            "action": {"type": "message", "text": msg},
+            "action": action,
         })
 
     body = {
@@ -192,12 +209,12 @@ if __name__ == "__main__":
     delete_existing()
 
     free_img = make_image(FREE_BUTTONS, "rich_menu_free.jpg")
-    free_id = create_rich_menu(FREE_BUTTONS, "無料会員メニュー")
+    free_id  = create_rich_menu(FREE_BUTTONS, "無料会員メニュー")
     upload_image(free_id, free_img)
     set_default(free_id)
 
     paid_img = make_image(PAID_BUTTONS, "rich_menu_paid.jpg")
-    paid_id = create_rich_menu(PAID_BUTTONS, "有料会員メニュー")
+    paid_id  = create_rich_menu(PAID_BUTTONS, "有料会員メニュー")
     upload_image(paid_id, paid_img)
 
     print("\n=== 完了 ===")

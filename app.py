@@ -1347,7 +1347,7 @@ def get_claude_reply(
     # 新規トピック時はFAQをhandle_message側で確認済みなので飲食店情報のみ注入
     if not skip_faq:
         user_region = (user_info or {}).get("region", "")
-        if _is_food_query(user_message) and "藤沢" in user_region:
+        if _is_food_query(user_message) and user_region:
             restaurant_context = _search_restaurants(user_message)
             if restaurant_context:
                 system += f"\n\n{restaurant_context}\n上記の情報を参考にして答えてください。"
@@ -1697,9 +1697,9 @@ def handle_message(event):
                     quick_reply=_get_context_quick_reply(msg),
                 )
             ]
-            # 飲食系クエリかつ藤沢ユーザーならカルーセルも追加（新規トピックのみ）
+            # 飲食系クエリかつ地域登録済みユーザーならカルーセルも追加（新規トピックのみ）
             user_region = (uinfo or {}).get("region", "")
-            if not skip_faq and _is_food_query(msg) and "藤沢" in user_region:
+            if not skip_faq and _is_food_query(msg) and user_region:
                 restaurants = _query_restaurants(msg)
                 if restaurants:
                     messages_to_send.append(_build_restaurant_carousel(restaurants))
@@ -2589,7 +2589,7 @@ load();
 
 @app.route("/liff/search", methods=["GET"])
 def liff_search():
-    area = _AREA_KEYWORDS[0] if _AREA_KEYWORDS else "藤沢"
+    area = _AREA_KEYWORDS[0] if _AREA_KEYWORDS else ""
     html = _LIFF_SEARCH_HTML.format(liff_search_id=LIFF_SEARCH_ID, area=area)
     return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
