@@ -702,7 +702,7 @@ def _get_user(user_id: str) -> dict | None:
         return user_cache[user_id]
     result = (
         get_supabase().table("users")
-        .select("name, region, prefecture, city, is_paid")
+        .select("name, region, prefecture, city, is_paid, current_menu_id")
         .eq("line_user_id", user_id)
         .limit(1)
         .execute()
@@ -808,13 +808,26 @@ def _generate_referral_code() -> str:
     return secrets.token_hex(4).upper()  # 万一衝突が続いたら8文字で返す
 
 
-def _apply_rich_menu(user_id: str, is_paid: bool) -> None:
-    """is_paid フラグに応じてユーザーにリッチメニューを適用する。"""
-    menu_id = RICH_MENU_PAID_ID if is_paid else RICH_MENU_FREE_ID
-    if not menu_id:
+def _apply_rich_menu(user_id: str, is_paid: bool, current_menu_id: str | None = None) -> None:
+    """is_paid に応じてリッチメニューを適用する。
+    current_menu_id と一致する場合は API コールをスキップして無駄なリクエストを防ぐ。
+    切り替えた場合は DB と in-memory キャッシュの current_menu_id を更新する。
+    """
+    target_menu_id = RICH_MENU_PAID_ID if is_paid else RICH_MENU_FREE_ID
+    if not target_menu_id:
         return
+    if target_menu_id == current_menu_id:
+        return  # 既に正しいメニューが設定済み → スキップ
     try:
-        line_bot_api.link_rich_menu_to_user(user_id, menu_id)
+        line_bot_api.link_rich_menu_to_user(user_id, target_menu_id)
+        # DB を更新
+        get_supabase().table("users").update(
+            {"current_menu_id": target_menu_id}
+        ).eq("line_user_id", user_id).execute()
+        # キャッシュも更新
+        if user_id in user_cache and user_cache[user_id]:
+            user_cache[user_id]["current_menu_id"] = target_menu_id
+        logging.info("rich menu switched: %s → %s (is_paid=%s)", user_id, target_menu_id, is_paid)
     except Exception as e:
         logging.error("rich menu link error: %s", e)
 
@@ -1464,6 +1477,13 @@ def handle_message(event):
         if user_info is None:
             line_bot_api.reply_message(event.reply_token, start_registration(user_id))
             return
+
+        # リッチメニューをバックグラウンドで同期（変更がある時のみ API コール）
+        threading.Thread(
+            target=_apply_rich_menu,
+            args=(user_id, bool(user_info.get("is_paid")), user_info.get("current_menu_id")),
+            daemon=True,
+        ).start()
     except Exception as e:
         logging.exception("registration flow error: %s", e)
         line_bot_api.reply_message(
