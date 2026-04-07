@@ -473,6 +473,43 @@ def _retro_bubble(title: str, icon: str, desc: str, action: dict,
 
 # ── フレックスメッセージ ────────────────────────────────
 
+def _retro_nav_bubble(title: str, items: list) -> dict:
+    """ショートカットナビゲーションカード（クイックリプライ代替）。"""
+    contents = []
+    for i, (label, text) in enumerate(items):
+        is_back = "戻る" in label or "ホーム" in label
+        btn: dict = {
+            "type": "button",
+            "action": {"type": "message", "label": label, "text": text},
+            "height": "sm",
+            "style": "secondary" if is_back else "primary",
+        }
+        if not is_back:
+            btn["color"] = _R_BTN_COLOR
+        if i > 0:
+            btn["margin"] = "sm"
+        contents.append(btn)
+
+    return {
+        "type": "bubble",
+        "size": "kilo",
+        "header": {
+            "type": "box", "layout": "vertical", "paddingAll": "md",
+            "backgroundColor": _R_HEADER_BG,
+            "contents": [{
+                "type": "text", "text": title,
+                "weight": "bold", "size": "md",
+                "color": _R_HEADER_TEXT, "align": "center",
+            }],
+        },
+        "body": {
+            "type": "box", "layout": "vertical",
+            "paddingAll": "lg", "backgroundColor": _R_BODY_BG,
+            "spacing": "sm",
+            "contents": contents,
+        },
+    }
+
 def _make_card_bubble(emoji: str, title: str, desc: str, btn_text: str,
                       color: str, image_url: str = "") -> dict:
     """レトロデザインのカード型バブルを返す。"""
@@ -486,7 +523,7 @@ def _make_card_bubble(emoji: str, title: str, desc: str, btn_text: str,
 
 
 def _flex_consult_menu() -> FlexSendMessage:
-    """①相談する：3カードカルーセル"""
+    """①相談する：3カード＋ナビカード"""
     bubbles = [
         _make_card_bubble("📱", "スマホの使いかた", "操作方法からアプリまで\nやさしく教えます",
                           "スマホの使いかたを教えてください", "", _card_icon("smartphone.png")),
@@ -494,6 +531,12 @@ def _flex_consult_menu() -> FlexSendMessage:
                           "健康について相談したいことがあります", "", _card_icon("health.png")),
         _make_card_bubble("🏠", "お家の困りごと", "水漏れや電気など\n業者探しもお手伝い",
                           "家の困りごとを相談したいです", "", _card_icon("home.png")),
+        _retro_nav_bubble("ショートカット", [
+            ("操作を教える",   "スマホの操作を教えてください"),
+            ("病院を探す",     "近くの病院を探してください"),
+            ("業者を呼ぶ",     "家の修繕業者を教えてください"),
+            ("🏠 最初に戻る",  "最初に戻る"),
+        ]),
     ]
     return FlexSendMessage(
         alt_text="何についてご相談ですか？",
@@ -502,7 +545,7 @@ def _flex_consult_menu() -> FlexSendMessage:
 
 
 def _flex_search_menu() -> FlexSendMessage:
-    """②探す：3カードカルーセル"""
+    """②探す：3カード＋ナビカード"""
     bubbles = [
         _make_card_bubble("🍽️", "近くの美味しいお店", "和食・洋食・カフェなど\nおすすめを教えます",
                           "近くの美味しいお店を教えてください", "", _card_icon("restaurant.png")),
@@ -510,6 +553,11 @@ def _flex_search_menu() -> FlexSendMessage:
                           "近くの病院を教えてください", "", _card_icon("hospital.png")),
         _make_card_bubble("🏛️", "公共施設・公園", "市役所・図書館・公園など\n近くの施設を案内",
                           "近くの公共施設や公園を教えてください", "", _card_icon("facility.png")),
+        _retro_nav_bubble("ショートカット", [
+            ("和食がいい",           "和食のお店を教えてください"),
+            ("いま開いている所",     "今開いているお店を教えてください"),
+            ("🏠 最初に戻る",        "最初に戻る"),
+        ]),
     ]
     return FlexSendMessage(
         alt_text="何をお探しですか？",
@@ -518,7 +566,7 @@ def _flex_search_menu() -> FlexSendMessage:
 
 
 def _flex_know_menu() -> FlexSendMessage:
-    """③知る：3カードカルーセル"""
+    """③知る：3カード＋ナビカード"""
     bubbles = [
         _make_card_bubble("⛅", "今日の天気", "雨・気温・風など\n今日の天気を確認",
                           "今日の天気を教えてください", "", _card_icon("weather.png")),
@@ -526,6 +574,12 @@ def _flex_know_menu() -> FlexSendMessage:
                           "ゴミの収集日を教えてください", "", _card_icon("trash.png")),
         _make_card_bubble("🎉", "街のイベント", "近くのイベントや\n季節の行事を紹介",
                           "近くの街のイベントを教えてください", "", _card_icon("event.png")),
+        _retro_nav_bubble("ショートカット", [
+            ("明日の天気は？",     "明日の天気を教えてください"),
+            ("粗大ゴミの出し方",   "粗大ゴミの出し方を教えてください"),
+            ("もっと見る",         "地域情報をもっと教えてください"),
+            ("🏠 最初に戻る",      "最初に戻る"),
+        ]),
     ]
     return FlexSendMessage(
         alt_text="何を知りたいですか？",
@@ -534,7 +588,7 @@ def _flex_know_menu() -> FlexSendMessage:
 
 
 def _flex_connect_menu() -> FlexSendMessage:
-    """④つながる：3カードカルーセル"""
+    """④つながる：3カード＋ナビカード"""
     bubbles = [
         _make_card_bubble("🌸", "趣味のサークル", "手芸・園芸・将棋など\n同じ趣味の仲間を",
                           "趣味のサークルを探したいです", "", _card_icon("circle.png")),
@@ -542,6 +596,12 @@ def _flex_connect_menu() -> FlexSendMessage:
                           "地域の集まりについて教えてください", "", _card_icon("community.png")),
         _make_card_bubble("📻", "昭和の思い出話", "懐かしい話を一緒に\n楽しみましょう",
                           "昭和の思い出話をしましょう", "", _card_icon("retro.png")),
+        _retro_nav_bubble("ショートカット", [
+            ("散歩仲間",       "散歩仲間を探したいです"),
+            ("ゲートボール",   "ゲートボールの情報を教えてください"),
+            ("昔の話をする",   "昭和の思い出について話しましょう"),
+            ("🏠 最初に戻る",  "最初に戻る"),
+        ]),
     ]
     return FlexSendMessage(
         alt_text="つながりを広げましょう",
@@ -590,13 +650,26 @@ def _flex_referral_menu(referral_code: str) -> FlexSendMessage:
         },
         "footer": {
             "type": "box", "layout": "vertical", "paddingAll": "md",
-            "backgroundColor": _R_BODY_BG,
-            "contents": [{
-                "type": "button",
-                "action": {"type": "message", "label": "紹介メッセージを見る",
-                           "text": "友達に紹介するメッセージを見せてください"},
-                "style": "primary", "color": _R_BTN_COLOR,
-            }],
+            "spacing": "sm", "backgroundColor": _R_BODY_BG,
+            "contents": [
+                {
+                    "type": "button",
+                    "action": {"type": "message", "label": "紹介メッセージを見る",
+                               "text": "友達に紹介するメッセージを見せてください"},
+                    "style": "primary", "color": _R_BTN_COLOR,
+                },
+                {
+                    "type": "button",
+                    "action": {"type": "message", "label": "やり方を教える",
+                               "text": "友達に紹介するやり方を教えてください"},
+                    "style": "primary", "color": _R_BTN_COLOR, "margin": "sm",
+                },
+                {
+                    "type": "button",
+                    "action": {"type": "message", "label": "🏠 最初に戻る", "text": "最初に戻る"},
+                    "style": "secondary", "margin": "sm",
+                },
+            ],
         },
     }
     return FlexSendMessage(alt_text="友達に紹介しよう", contents=bubble)
@@ -1657,66 +1730,28 @@ def handle_message(event):
 
     # ① 相談する
     if msg == "相談する":
-        qr = _build_quick_reply([
-            ("操作を教える",   "スマホの操作を教えてください"),
-            ("病院を探す",     "近くの病院を探してください"),
-            ("業者を呼ぶ",     "家の修繕業者を教えてください"),
-            _QR_BACK,
-        ])
-        flex = _flex_consult_menu()
-        flex.quick_reply = qr
-        line_bot_api.reply_message(event.reply_token, flex)
+        line_bot_api.reply_message(event.reply_token, _flex_consult_menu())
         return
 
     # ② 探す
     if msg == "探す":
-        qr = _build_quick_reply([
-            ("和食がいい",         "和食のお店を教えてください"),
-            ("いま開いている所",   "今開いているお店を教えてください"),
-            _QR_BACK,
-        ])
-        flex = _flex_search_menu()
-        flex.quick_reply = qr
-        line_bot_api.reply_message(event.reply_token, flex)
+        line_bot_api.reply_message(event.reply_token, _flex_search_menu())
         return
 
     # ③ 知る
     if msg == "知る":
-        qr = _build_quick_reply([
-            ("明日の天気は？",     "明日の天気を教えてください"),
-            ("粗大ゴミの出し方",   "粗大ゴミの出し方を教えてください"),
-            ("もっと見る",         "地域情報をもっと教えてください"),
-            _QR_BACK,
-        ])
-        flex = _flex_know_menu()
-        flex.quick_reply = qr
-        line_bot_api.reply_message(event.reply_token, flex)
+        line_bot_api.reply_message(event.reply_token, _flex_know_menu())
         return
 
     # ④ つながる
     if msg == "つながる":
-        qr = _build_quick_reply([
-            ("散歩仲間",       "散歩仲間を探したいです"),
-            ("ゲートボール",   "ゲートボールの情報を教えてください"),
-            ("昔の話をする",   "昭和の思い出について話しましょう"),
-            _QR_BACK,
-        ])
-        flex = _flex_connect_menu()
-        flex.quick_reply = qr
-        line_bot_api.reply_message(event.reply_token, flex)
+        line_bot_api.reply_message(event.reply_token, _flex_connect_menu())
         return
 
     # ⑤ 友達に紹介
     if msg == "友達に紹介":
         referral_code = _get_referral_code(user_id)
-        qr = _build_quick_reply([
-            ("LINEで送る",         "友達に紹介するメッセージを見せてください"),
-            ("やり方を教える",     "友達に紹介するやり方を教えてください"),
-            _QR_BACK,
-        ])
-        flex = _flex_referral_menu(referral_code)
-        flex.quick_reply = qr
-        line_bot_api.reply_message(event.reply_token, flex)
+        line_bot_api.reply_message(event.reply_token, _flex_referral_menu(referral_code))
         return
 
     # 「紹介メッセージを見る」→ コピー用テキストを表示
@@ -1865,6 +1900,116 @@ def handle_message(event):
         daemon=True,
     ).start()
 
+
+# ── LIFF 共通レトロデザイン CSS ──────────────────────────
+# 全LIFFページの <style> タグ内で _RETRO_CSS を埋め込んで使う。
+# 例: <style>{retro_css} /* ページ固有のスタイル */ </style>
+#     html = _LIFF_XXX_HTML.format(retro_css=_RETRO_CSS, ...)
+
+_RETRO_CSS = """
+/* ── レトロデザイン共通スタイル ─────────────────────── */
+:root {
+  --bg:          #F5E6A3;   /* 和紙イエロー */
+  --header-bg:   #8B1A1A;   /* えんじ */
+  --header-text: #FFD700;   /* 金 */
+  --text:        #4A2C0A;   /* 濃茶 */
+  --sub-text:    #6B4010;   /* 茶 */
+  --btn-bg:      #8B1A1A;   /* えんじ */
+  --btn-text:    #FFD700;   /* 金 */
+  --border:      #8B6914;   /* 茶 */
+  --card-bg:     #FFF8DC;   /* カード背景（少し明るいクリーム） */
+  --divider:     #C8A060;   /* 区切り線 */
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+  font-size: 16px;
+  min-height: 100vh;
+}
+
+/* ヘッダー */
+.retro-header {
+  background: var(--header-bg);
+  color: var(--header-text);
+  text-align: center;
+  padding: 14px 16px;
+  font-size: 20px;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  border-bottom: 3px solid var(--border);
+}
+
+/* カード */
+.retro-card {
+  background: var(--card-bg);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  margin: 12px 16px;
+  box-shadow: 2px 3px 0 var(--border);
+}
+
+/* ボタン */
+.retro-btn {
+  display: block;
+  width: 100%;
+  background: var(--btn-bg);
+  color: var(--btn-text);
+  border: none;
+  border-radius: 8px;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: bold;
+  text-align: center;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  margin-top: 12px;
+  box-shadow: 2px 3px 0 #5C1010;
+}
+.retro-btn:active { transform: translateY(2px); box-shadow: none; }
+
+/* 入力フォーム */
+.retro-input, .retro-select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  background: #FFFFF0;
+  color: var(--text);
+  font-size: 16px;
+  margin-top: 6px;
+}
+
+/* ラベル */
+.retro-label {
+  font-size: 13px;
+  color: var(--sub-text);
+  font-weight: bold;
+  margin-top: 12px;
+  display: block;
+}
+
+/* 区切り線 */
+.retro-divider {
+  border: none;
+  border-top: 2px dashed var(--divider);
+  margin: 16px 0;
+}
+
+/* セクションタイトル */
+.retro-section-title {
+  font-size: 14px;
+  font-weight: bold;
+  color: var(--header-bg);
+  border-left: 4px solid var(--header-bg);
+  padding-left: 8px;
+  margin: 16px 16px 8px;
+}
+"""
 
 # ── LIFF マイページ ───────────────────────────────────
 
