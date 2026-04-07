@@ -25,6 +25,8 @@ services:
         sync: false
       - key: LIFF_SCHEDULE_ID
         sync: false
+      - key: LIFF_MEMO_ID
+        sync: false
 
   - type: cron
     name: morning-push

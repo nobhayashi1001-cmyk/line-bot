@@ -51,6 +51,7 @@ LIFF_FAQ_ID      = os.environ.get("LIFF_FAQ_ID",     LIFF_ID)
 LIFF_SEARCH_ID   = os.environ.get("LIFF_SEARCH_ID",  LIFF_ID)
 LIFF_MAP_ID      = os.environ.get("LIFF_MAP_ID",      LIFF_ID)
 LIFF_SCHEDULE_ID = os.environ.get("LIFF_SCHEDULE_ID", LIFF_ID)
+LIFF_MEMO_ID     = os.environ.get("LIFF_MEMO_ID",     LIFF_ID)
 GOOGLE_MAPS_API_KEY    = os.environ.get("GOOGLE_MAPS_API_KEY", "")
 STRIPE_SECRET_KEY      = os.environ.get("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET  = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
@@ -1936,6 +1937,7 @@ _LIFF_VALID_PATHS = {
     "/search":   "/liff/search",
     "/map":      "/liff/map",
     "/schedule": "/liff/schedule",
+    "/memo":     "/liff/memo",
 }
 
 @app.route("/liff", methods=["GET"])
@@ -3130,6 +3132,306 @@ def liff_api_schedule_delete(schedule_id):
         return jsonify({"success": True})
     except Exception as e:
         logging.exception("schedule delete error: %s", e)
+        return jsonify({"error": "server error"}), 500
+
+
+# ── ⑥ メモ帳（LIFF） ────────────────────────────────
+
+_LIFF_MEMO_HTML = """\
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=yes">
+<title>メモ帳</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:18px;background:#fff;color:#333;min-height:100vh}}
+/* ヘッダー */
+.hd{{background:#2196F3;color:#fff;padding:16px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:10}}
+.hd-back{{font-size:24px;background:none;border:none;color:#fff;cursor:pointer;padding:4px 8px;display:none}}
+.hd h1{{font-size:22px;font-weight:bold}}
+/* リスト画面 */
+#view-list{{display:block}}
+.memo-card{{display:flex;align-items:center;padding:18px 20px;border-bottom:1px solid #EEE;cursor:pointer;background:#fff}}
+.memo-card:active{{background:#F0F7FF}}
+.card-body{{flex:1;min-width:0}}
+.card-title{{font-size:20px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#222}}
+.card-date{{font-size:14px;color:#AAA;margin-top:4px}}
+.card-menu{{font-size:22px;color:#CCC;padding:4px 8px;flex-shrink:0}}
+.empty-list{{text-align:center;padding:60px 20px;color:#BBB;font-size:19px}}
+/* FAB */
+.fab{{position:fixed;bottom:28px;right:24px;width:60px;height:60px;border-radius:50%;background:#2196F3;color:#fff;font-size:34px;border:none;cursor:pointer;box-shadow:0 4px 14px rgba(33,150,243,.45);display:flex;align-items:center;justify-content:center;line-height:1}}
+.fab:active{{background:#1976D2}}
+/* 編集画面 */
+#view-edit{{display:none;padding:20px}}
+.edit-label{{font-size:16px;color:#888;margin-bottom:8px}}
+.memo-textarea{{width:100%;font-size:20px;border:2px solid #DDD;border-radius:10px;padding:14px;min-height:220px;resize:vertical;line-height:1.65;font-family:inherit}}
+.memo-textarea:focus{{outline:none;border-color:#2196F3}}
+.mic-row{{display:flex;justify-content:flex-end;margin-top:10px}}
+.mic-btn{{padding:12px 16px;font-size:22px;background:#fff;border:2px solid #DDD;border-radius:10px;cursor:pointer}}
+.mic-btn.rec{{border-color:#2196F3;background:#E3F2FD}}
+.btn-save{{display:block;width:100%;margin-top:18px;padding:16px;font-size:20px;font-weight:bold;background:#2196F3;color:#fff;border:none;border-radius:12px;cursor:pointer}}
+.btn-save:active{{background:#1976D2}}
+.btn-del{{display:block;width:100%;margin-top:12px;padding:14px;font-size:18px;font-weight:bold;background:#fff;color:#E74C3C;border:2px solid #E74C3C;border-radius:12px;cursor:pointer}}
+.btn-del:active{{background:#FFF5F5}}
+.loader{{text-align:center;padding:40px;color:#AAA;font-size:18px}}
+</style>
+</head>
+<body>
+
+<!-- ヘッダー -->
+<div class="hd">
+  <button class="hd-back" id="hd-back" onclick="showList()">&#8592;</button>
+  <h1 id="hd-title">&#128221; メモ帳</h1>
+</div>
+
+<!-- リスト画面 -->
+<div id="view-list">
+  <div id="memo-list"><div class="loader">読み込み中...</div></div>
+  <button class="fab" onclick="newMemo()">&#＋;</button>
+</div>
+
+<!-- 編集画面 -->
+<div id="view-edit">
+  <div class="edit-label" id="edit-label">新規メモ</div>
+  <textarea class="memo-textarea" id="memo-ta" placeholder="メモを入力してください..."></textarea>
+  <div class="mic-row">
+    <button class="mic-btn" id="mic-btn" onclick="toggleVoice()">&#127908;</button>
+  </div>
+  <button class="btn-save" onclick="saveMemo()">保存する</button>
+  <button class="btn-del" id="btn-del" style="display:none" onclick="deleteMemo()">削除する</button>
+</div>
+
+<script>
+var LIFF_ID = "{liff_memo_id}";
+var lineUserId = "", memos = [], editingId = null;
+var recognition = null, isRec = false;
+
+liff.init({{liffId:LIFF_ID}}).then(function(){{
+  if (liff.isLoggedIn()) {{
+    liff.getProfile().then(function(p){{
+      lineUserId = p.userId;
+      loadMemos();
+    }});
+  }} else {{ liff.login(); }}
+}}).catch(function(){{
+  lineUserId = new URLSearchParams(location.search).get("line_user_id") || "";
+  loadMemos();
+}});
+
+function loadMemos(){{
+  if (!lineUserId) {{ renderList(); return; }}
+  fetch("/liff/api/memo?line_user_id="+encodeURIComponent(lineUserId))
+    .then(function(r){{return r.json();}})
+    .then(function(d){{
+      memos = d.memos || [];
+      renderList();
+    }}).catch(function(){{
+      document.getElementById("memo-list").innerHTML = '<div class="empty-list">読み込みに失敗しました</div>';
+    }});
+}}
+
+function renderList(){{
+  if (!memos.length){{
+    document.getElementById("memo-list").innerHTML = '<div class="empty-list">メモがありません<br>＋ボタンで作成できます</div>';
+    return;
+  }}
+  var html = "";
+  memos.forEach(function(m){{
+    var title = (m.content||"").replace(/\\n/g," ").substring(0,20) || "（空のメモ）";
+    var dt = m.updated_at ? m.updated_at.replace("T"," ").substring(0,16) : "";
+    html += '<div class="memo-card" onclick="editMemo(\'' + m.id + '\')">'
+          + '<div class="card-body">'
+          + '<div class="card-title">' + esc(title) + '</div>'
+          + (dt ? '<div class="card-date">' + dt + '</div>' : '')
+          + '</div>'
+          + '<span class="card-menu">&#8801;</span>'
+          + '</div>';
+  }});
+  document.getElementById("memo-list").innerHTML = html;
+}}
+
+function showList(){{
+  document.getElementById("view-list").style.display = "block";
+  document.getElementById("view-edit").style.display = "none";
+  document.getElementById("hd-back").style.display = "none";
+  document.getElementById("hd-title").textContent = "\\uD83D\\uDCD3 メモ帳";
+  editingId = null;
+}}
+
+function newMemo(){{
+  editingId = null;
+  document.getElementById("memo-ta").value = "";
+  document.getElementById("edit-label").textContent = "新規メモ";
+  document.getElementById("btn-del").style.display = "none";
+  showEdit();
+}}
+
+function editMemo(id){{
+  var m = memos.find(function(x){{return x.id===id;}});
+  if (!m) return;
+  editingId = id;
+  document.getElementById("memo-ta").value = m.content || "";
+  document.getElementById("edit-label").textContent = "メモを編集";
+  document.getElementById("btn-del").style.display = "block";
+  showEdit();
+}}
+
+function showEdit(){{
+  document.getElementById("view-list").style.display = "none";
+  document.getElementById("view-edit").style.display = "block";
+  document.getElementById("hd-back").style.display = "inline-block";
+  document.getElementById("hd-title").textContent = editingId ? "編集" : "新規メモ";
+  document.getElementById("memo-ta").focus();
+}}
+
+function saveMemo(){{
+  var content = document.getElementById("memo-ta").value.trim();
+  if (!content){{ alert("メモを入力してください"); return; }}
+  if (!lineUserId){{ alert("ユーザー情報を取得できません"); return; }}
+
+  if (editingId){{
+    fetch("/liff/api/memo/"+encodeURIComponent(editingId),{{
+      method:"PUT",
+      headers:{{"Content-Type":"application/json"}},
+      body:JSON.stringify({{content:content}})
+    }}).then(function(r){{return r.json();}}).then(function(d){{
+      if (d.id){{
+        var idx = memos.findIndex(function(m){{return m.id===d.id;}});
+        if (idx>=0) memos[idx] = d;
+        renderList(); showList();
+      }} else {{ alert("保存できませんでした"); }}
+    }}).catch(function(){{alert("保存できませんでした");}});
+  }} else {{
+    fetch("/liff/api/memo",{{
+      method:"POST",
+      headers:{{"Content-Type":"application/json"}},
+      body:JSON.stringify({{line_user_id:lineUserId, content:content}})
+    }}).then(function(r){{return r.json();}}).then(function(d){{
+      if (d.id){{
+        memos.unshift(d);
+        renderList(); showList();
+      }} else {{ alert("保存できませんでした"); }}
+    }}).catch(function(){{alert("保存できませんでした");}});
+  }}
+}}
+
+function deleteMemo(){{
+  if (!editingId || !confirm("このメモを削除しますか？")) return;
+  fetch("/liff/api/memo/"+encodeURIComponent(editingId),{{method:"DELETE"}})
+    .then(function(r){{return r.json();}}).then(function(d){{
+      if (d.success){{
+        memos = memos.filter(function(m){{return m.id!==editingId;}});
+        renderList(); showList();
+      }} else {{ alert("削除できませんでした"); }}
+    }}).catch(function(){{alert("削除できませんでした");}});
+}}
+
+function toggleVoice(){{
+  var SR = window.SpeechRecognition||window.webkitSpeechRecognition;
+  if (!SR){{alert("このブラウザは音声入力に対応していません");return;}}
+  if (isRec){{recognition.stop();return;}}
+  recognition = new SR();
+  recognition.lang = "ja-JP";
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.onstart = function(){{
+    isRec = true;
+    document.getElementById("mic-btn").classList.add("rec");
+    document.getElementById("mic-btn").innerHTML = "&#9209;";
+  }};
+  recognition.onresult = function(e){{
+    var ta = document.getElementById("memo-ta");
+    ta.value = (ta.value ? ta.value+"\n" : "") + e.results[0][0].transcript;
+  }};
+  recognition.onend = recognition.onerror = function(){{
+    isRec = false;
+    document.getElementById("mic-btn").classList.remove("rec");
+    document.getElementById("mic-btn").innerHTML = "&#127908;";
+  }};
+  recognition.start();
+}}
+
+function esc(s){{return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}}
+</script>
+</body></html>
+"""
+
+
+@app.route("/liff/memo", methods=["GET"])
+def liff_memo():
+    html = _LIFF_MEMO_HTML.format(liff_memo_id=LIFF_MEMO_ID)
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+@app.route("/liff/api/memo", methods=["GET"])
+def liff_api_memo_get():
+    user_id = request.args.get("line_user_id", "").strip()
+    if not user_id:
+        return jsonify({"error": "line_user_id required"}), 400
+    try:
+        result = (
+            get_supabase().table("memos")
+            .select("id, content, created_at, updated_at")
+            .eq("line_user_id", user_id)
+            .order("updated_at", desc=True)
+            .execute()
+        )
+        return jsonify({"memos": result.data or []})
+    except Exception as e:
+        logging.exception("memo get error: %s", e)
+        return jsonify({"error": "server error"}), 500
+
+
+@app.route("/liff/api/memo", methods=["POST"])
+def liff_api_memo_post():
+    data    = request.get_json(silent=True) or {}
+    user_id = data.get("line_user_id", "").strip()
+    content = data.get("content", "").strip()
+    if not user_id or not content:
+        return jsonify({"error": "missing params"}), 400
+    try:
+        result = (
+            get_supabase().table("memos")
+            .insert({"line_user_id": user_id, "content": content})
+            .execute()
+        )
+        return jsonify(result.data[0] if result.data else {"error": "insert failed"})
+    except Exception as e:
+        logging.exception("memo post error: %s", e)
+        return jsonify({"error": "server error"}), 500
+
+
+@app.route("/liff/api/memo/<memo_id>", methods=["PUT"])
+def liff_api_memo_put(memo_id):
+    data    = request.get_json(silent=True) or {}
+    content = data.get("content", "").strip()
+    if not content:
+        return jsonify({"error": "content required"}), 400
+    try:
+        from datetime import timezone, datetime as _dt
+        now = _dt.now(timezone.utc).isoformat()
+        result = (
+            get_supabase().table("memos")
+            .update({"content": content, "updated_at": now})
+            .eq("id", memo_id)
+            .execute()
+        )
+        return jsonify(result.data[0] if result.data else {"error": "not found"})
+    except Exception as e:
+        logging.exception("memo put error: %s", e)
+        return jsonify({"error": "server error"}), 500
+
+
+@app.route("/liff/api/memo/<memo_id>", methods=["DELETE"])
+def liff_api_memo_delete(memo_id):
+    try:
+        get_supabase().table("memos").delete().eq("id", memo_id).execute()
+        return jsonify({"success": True})
+    except Exception as e:
+        logging.exception("memo delete error: %s", e)
         return jsonify({"error": "server error"}), 500
 
 
