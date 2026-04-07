@@ -898,7 +898,7 @@ def _check_and_increment_usage(user_id: str) -> bool:
 
 
 def _handle_referral_input(user_id: str, code: str) -> str:
-    """紹介コードを受け取り、双方に bonus_count +5 を付与する。"""
+    """紹介コードを受け取り、双方に bonus_count +5 を付与し、紹介者に通知する。"""
     try:
         me = get_supabase().table("users").select(
             "name, referral_code, referred_by, bonus_count"
@@ -923,26 +923,47 @@ def _handle_referral_input(user_id: str, code: str) -> str:
 
         referrer_data = referrer.data[0]
 
+        # 更新後のボーナス回数を先に計算
+        my_new_bonus      = (my_data.get("bonus_count")       or 0) + 5
+        referrer_new_bonus = (referrer_data.get("bonus_count") or 0) + 5
+
         # 自分の referred_by を保存し、bonus_count +5
         get_supabase().table("users").update({
             "referred_by": code.upper(),
-            "bonus_count": (my_data.get("bonus_count") or 0) + 5,
+            "bonus_count": my_new_bonus,
         }).eq("line_user_id", user_id).execute()
 
         # 紹介者の bonus_count +5
         get_supabase().table("users").update({
-            "bonus_count": (referrer_data.get("bonus_count") or 0) + 5,
+            "bonus_count": referrer_new_bonus,
         }).eq("line_user_id", referrer_data["line_user_id"]).execute()
 
         user_cache.pop(user_id, None)
 
-        my_name = my_data.get("name") or "あなた"
-        referrer_name = referrer_data.get("name") or "紹介者"
+        # ── 紹介者へ LINE プッシュ通知 ───────────────────────────
+        referrer_line_id = referrer_data.get("line_user_id")
+        if referrer_line_id:
+            try:
+                notify_text = (
+                    "🎉 おめでとうございます！\n"
+                    "お友達があなたの紹介コードで登録しました！\n\n"
+                    f"ボーナス5回をプレゼントしました😊\n"
+                    f"残り回数：{referrer_new_bonus}回\n\n"
+                    "引き続きご利用ください！"
+                )
+                line_bot_api.push_message(
+                    referrer_line_id,
+                    TextSendMessage(text=notify_text),
+                )
+            except Exception as push_err:
+                logging.warning("referral push notify failed: %s", push_err)
+
+        # ── 紹介された人（自分）へのウェルカムメッセージ ─────────
         return (
-            f"紹介コードを登録しました！\n\n"
-            f"{referrer_name}さんの紹介ありがとうございます。\n"
-            f"{my_name}さんと{referrer_name}さんに、\n"
-            f"それぞれ5回分の追加利用回数をプレゼントしました。"
+            f"🎁 紹介コードが確認できました！\n\n"
+            f"ボーナス5回をプレゼントします😊\n"
+            f"これで合計{my_new_bonus}回使えます！\n\n"
+            "さっそく使ってみましょう！"
         )
     except Exception as e:
         logging.error("referral error: %s", e)
