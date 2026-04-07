@@ -49,7 +49,8 @@ LIFF_ID          = os.environ.get("LIFF_ID", "")
 LIFF_INVITE_ID   = os.environ.get("LIFF_INVITE_ID",  LIFF_ID)
 LIFF_FAQ_ID      = os.environ.get("LIFF_FAQ_ID",     LIFF_ID)
 LIFF_SEARCH_ID   = os.environ.get("LIFF_SEARCH_ID",  LIFF_ID)
-LIFF_MAP_ID      = os.environ.get("LIFF_MAP_ID",     LIFF_ID)
+LIFF_MAP_ID      = os.environ.get("LIFF_MAP_ID",      LIFF_ID)
+LIFF_SCHEDULE_ID = os.environ.get("LIFF_SCHEDULE_ID", LIFF_ID)
 GOOGLE_MAPS_API_KEY    = os.environ.get("GOOGLE_MAPS_API_KEY", "")
 STRIPE_SECRET_KEY      = os.environ.get("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET  = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
@@ -1934,6 +1935,7 @@ _LIFF_VALID_PATHS = {
     "/faq":      "/liff/faq",
     "/search":   "/liff/search",
     "/map":      "/liff/map",
+    "/schedule": "/liff/schedule",
 }
 
 @app.route("/liff", methods=["GET"])
@@ -2822,6 +2824,313 @@ def liff_map():
         google_maps_api_key=GOOGLE_MAPS_API_KEY,
     )
     return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+# ── ⑤ スケジュール（LIFF） ───────────────────────────
+
+_LIFF_SCHEDULE_HTML = """\
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=yes">
+<title>スケジュール</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;font-size:18px;background:#fff;color:#333;padding-bottom:60px}}
+.hd{{background:#E74C3C;color:#fff;padding:16px;text-align:center}}
+.hd h1{{font-size:22px;font-weight:bold}}
+.cal-nav{{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #EEE}}
+.cal-nav button{{font-size:28px;border:none;background:none;color:#E74C3C;cursor:pointer;padding:6px 14px;line-height:1}}
+.month-label{{font-size:22px;font-weight:bold;color:#222}}
+table.cal{{width:100%;border-collapse:collapse;table-layout:fixed}}
+table.cal th{{text-align:center;padding:10px 0 8px;font-size:14px;font-weight:bold;border-bottom:2px solid #EEE;color:#555}}
+table.cal th.sun{{color:#E74C3C}}
+table.cal th.sat{{color:#888}}
+table.cal td{{text-align:center;padding:6px 2px;vertical-align:top;height:62px;cursor:pointer;border-bottom:1px solid #F5F5F5}}
+table.cal td:hover{{background:#FFF5F5}}
+table.cal td.sel{{background:#FFF0F0}}
+.dn{{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;font-size:22px;border-radius:50%;font-weight:500}}
+.dn.today{{background:#E74C3C;color:#fff;font-weight:bold}}
+.dn.sun{{color:#E74C3C}}
+.dn.sat{{color:#888}}
+.dn.out{{color:#CCC;font-size:18px}}
+.dot{{display:block;width:7px;height:7px;background:#E74C3C;border-radius:50%;margin:2px auto 0}}
+.memo-area{{padding:20px;border-top:3px solid #EEE;display:none}}
+.memo-date{{font-size:22px;font-weight:bold;color:#E74C3C;margin-bottom:16px}}
+.saved-item{{background:#F8F8F8;border-radius:10px;padding:14px 50px 14px 14px;margin-bottom:10px;position:relative}}
+.saved-content{{font-size:18px;line-height:1.65;white-space:pre-wrap;word-break:break-all}}
+.saved-time{{font-size:13px;color:#AAA;margin-top:6px}}
+.del-btn{{position:absolute;top:12px;right:12px;background:#fff;border:1px solid #DDD;border-radius:6px;color:#999;font-size:14px;padding:5px 10px;cursor:pointer}}
+.del-btn:active{{background:#FFE}}
+.empty-note{{color:#BBB;font-size:17px;text-align:center;padding:14px 0}}
+.input-row{{display:flex;gap:10px;align-items:flex-start;margin-bottom:14px}}
+.memo-input{{flex:1;font-size:20px;border:2px solid #DDD;border-radius:10px;padding:12px;min-height:100px;resize:vertical;line-height:1.6;font-family:inherit}}
+.memo-input:focus{{outline:none;border-color:#E74C3C}}
+.mic-btn{{padding:13px 12px;font-size:24px;background:#fff;border:2px solid #DDD;border-radius:10px;cursor:pointer;flex-shrink:0;line-height:1}}
+.mic-btn.rec{{border-color:#E74C3C;background:#FFF0F0}}
+.save-btn{{display:block;width:100%;padding:16px;font-size:20px;font-weight:bold;background:#E74C3C;color:#fff;border:none;border-radius:12px;cursor:pointer}}
+.save-btn:active{{background:#C0392B}}
+</style>
+</head>
+<body>
+<div class="hd"><h1>📅 スケジュール</h1></div>
+<div class="cal-nav">
+  <button onclick="changeMonth(-1)">&#9664;</button>
+  <span class="month-label" id="month-label"></span>
+  <button onclick="changeMonth(1)">&#9654;</button>
+</div>
+<table class="cal">
+  <thead><tr>
+    <th class="sun">SUN</th><th>MON</th><th>TUE</th>
+    <th>WED</th><th>THU</th><th>FRI</th><th class="sat">SAT</th>
+  </tr></thead>
+  <tbody id="cal-body"></tbody>
+</table>
+<div class="memo-area" id="memo-area">
+  <div class="memo-date" id="memo-date"></div>
+  <div id="saved-list"></div>
+  <div class="input-row">
+    <textarea class="memo-input" id="memo-input" placeholder="メモを入力してください..."></textarea>
+    <button class="mic-btn" id="mic-btn" onclick="toggleVoice()">&#127908;</button>
+  </div>
+  <button class="save-btn" onclick="saveSchedule()">保存する</button>
+</div>
+
+<script>
+var LIFF_ID = "{liff_schedule_id}";
+var lineUserId = "";
+var curYear, curMonth, selDate = "", monthData = {{}}, recognition = null, isRec = false;
+
+(function(){{
+  var t = new Date();
+  curYear = t.getFullYear();
+  curMonth = t.getMonth();
+}})();
+
+liff.init({{liffId: LIFF_ID}}).then(function(){{
+  if (liff.isLoggedIn()) {{
+    liff.getProfile().then(function(p){{
+      lineUserId = p.userId;
+      loadMonth();
+    }});
+  }} else {{ liff.login(); }}
+}}).catch(function(){{
+  lineUserId = new URLSearchParams(location.search).get("line_user_id") || "";
+  loadMonth();
+}});
+
+var WDAYS = ["日","月","火","水","木","金","土"];
+
+function pad(n){{ return n < 10 ? "0"+n : ""+n; }}
+function ds(y,m,d){{ return y+"-"+pad(m+1)+"-"+pad(d); }}
+
+function loadMonth(){{
+  document.getElementById("month-label").textContent = curYear+"年"+(curMonth+1)+"月";
+  if (!lineUserId){{ renderCal(); return; }}
+  fetch("/liff/api/schedule?line_user_id="+encodeURIComponent(lineUserId)
+      +"&year="+curYear+"&month="+(curMonth+1))
+    .then(function(r){{return r.json();}})
+    .then(function(d){{
+      monthData = {{}};
+      (d.schedules||[]).forEach(function(s){{
+        if (!monthData[s.date]) monthData[s.date]=[];
+        monthData[s.date].push(s);
+      }});
+      renderCal();
+      if (selDate) renderSaved();
+    }}).catch(function(){{renderCal();}});
+}}
+
+function renderCal(){{
+  var today = new Date();
+  var todayDs = ds(today.getFullYear(), today.getMonth(), today.getDate());
+  var firstDow = new Date(curYear, curMonth, 1).getDay();
+  var lastDay  = new Date(curYear, curMonth+1, 0).getDate();
+  var html = ""; var day = 1 - firstDow;
+  for (var r=0; r<6; r++){{
+    var row = "<tr>"; var hasContent = false;
+    for (var c=0; c<7; c++, day++){{
+      if (day < 1 || day > lastDay){{
+        row += "<td></td>";
+      }} else {{
+        hasContent = true;
+        var d = ds(curYear, curMonth, day);
+        var dnCls = "dn"+(d===todayDs?" today":"")+(c===0?" sun":"")+(c===6?" sat":"");
+        var dot = (monthData[d]&&monthData[d].length) ? '<span class="dot"></span>' : "";
+        row += '<td class="'+(d===selDate?"sel":"")+'" onclick="selDay(\''+d+'\','+day+','+c+')">'
+             + '<span class="'+dnCls+'">'+day+'</span>'+dot+'</td>';
+      }}
+    }}
+    row += "</tr>";
+    if (hasContent) html += row;
+  }}
+  document.getElementById("cal-body").innerHTML = html;
+}}
+
+function selDay(d, day, col){{
+  selDate = d;
+  var dt = new Date(parseInt(d.split("-")[0]), parseInt(d.split("-")[1])-1, parseInt(d.split("-")[2]));
+  document.getElementById("memo-date").textContent =
+    (dt.getMonth()+1)+"月"+dt.getDate()+"日（"+WDAYS[dt.getDay()]+"）";
+  document.getElementById("memo-area").style.display = "block";
+  document.getElementById("memo-input").value = "";
+  renderCal();
+  renderSaved();
+  setTimeout(function(){{document.getElementById("memo-area").scrollIntoView({{behavior:"smooth"}});}}, 50);
+}}
+
+function renderSaved(){{
+  var list = monthData[selDate]||[];
+  if (!list.length){{
+    document.getElementById("saved-list").innerHTML='<div class="empty-note">まだメモがありません</div>';
+    return;
+  }}
+  var html="";
+  list.forEach(function(s){{
+    var t = s.created_at ? s.created_at.replace("T"," ").substring(0,16) : "";
+    html += '<div class="saved-item">'
+          + '<div class="saved-content">'+esc(s.content)+'</div>'
+          + (t?'<div class="saved-time">'+t+'</div>':"")
+          + '<button class="del-btn" onclick="delSched(\''+s.id+'\')">削除</button>'
+          + '</div>';
+  }});
+  document.getElementById("saved-list").innerHTML = html;
+}}
+
+function saveSchedule(){{
+  var content = document.getElementById("memo-input").value.trim();
+  if (!content){{ alert("メモを入力してください"); return; }}
+  if (!lineUserId){{ alert("ユーザー情報を取得できません"); return; }}
+  fetch("/liff/api/schedule",{{
+    method:"POST",
+    headers:{{"Content-Type":"application/json"}},
+    body:JSON.stringify({{line_user_id:lineUserId, date:selDate, content:content}})
+  }}).then(function(r){{return r.json();}}).then(function(d){{
+    if (d.id){{
+      if (!monthData[selDate]) monthData[selDate]=[];
+      monthData[selDate].push(d);
+      document.getElementById("memo-input").value="";
+      renderSaved(); renderCal();
+    }} else {{ alert("保存できませんでした"); }}
+  }}).catch(function(){{alert("保存できませんでした");}});
+}}
+
+function delSched(id){{
+  if (!confirm("削除しますか？")) return;
+  fetch("/liff/api/schedule/"+encodeURIComponent(id),{{method:"DELETE"}})
+    .then(function(r){{return r.json();}}).then(function(d){{
+      if (d.success){{
+        monthData[selDate]=(monthData[selDate]||[]).filter(function(s){{return s.id!==id;}});
+        renderSaved(); renderCal();
+      }}
+    }}).catch(function(){{alert("削除できませんでした");}});
+}}
+
+function changeMonth(delta){{
+  curMonth+=delta;
+  if (curMonth<0){{curMonth=11;curYear--;}}
+  if (curMonth>11){{curMonth=0;curYear++;}}
+  selDate="";
+  document.getElementById("memo-area").style.display="none";
+  loadMonth();
+}}
+
+function toggleVoice(){{
+  var SR = window.SpeechRecognition||window.webkitSpeechRecognition;
+  if (!SR){{alert("このブラウザは音声入力に対応していません");return;}}
+  if (isRec){{recognition.stop();return;}}
+  recognition = new SR();
+  recognition.lang="ja-JP";
+  recognition.continuous=false;
+  recognition.interimResults=false;
+  recognition.onstart=function(){{
+    isRec=true;
+    document.getElementById("mic-btn").classList.add("rec");
+    document.getElementById("mic-btn").innerHTML="&#9209;";
+  }};
+  recognition.onresult=function(e){{
+    var ta=document.getElementById("memo-input");
+    ta.value=(ta.value?ta.value+"\n":"")+e.results[0][0].transcript;
+  }};
+  recognition.onend=recognition.onerror=function(){{
+    isRec=false;
+    document.getElementById("mic-btn").classList.remove("rec");
+    document.getElementById("mic-btn").innerHTML="&#127908;";
+  }};
+  recognition.start();
+}}
+
+function esc(s){{return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\\n/g,"<br>");}}
+</script>
+</body></html>
+"""
+
+
+@app.route("/liff/schedule", methods=["GET"])
+def liff_schedule():
+    html = _LIFF_SCHEDULE_HTML.format(liff_schedule_id=LIFF_SCHEDULE_ID)
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+@app.route("/liff/api/schedule", methods=["GET"])
+def liff_api_schedule_get():
+    user_id = request.args.get("line_user_id", "").strip()
+    year    = request.args.get("year", "").strip()
+    month   = request.args.get("month", "").strip()
+    if not user_id or not year or not month:
+        return jsonify({"error": "missing params"}), 400
+    try:
+        import calendar as cal_mod
+        y, m = int(year), int(month)
+        last_day = cal_mod.monthrange(y, m)[1]
+        start = f"{y:04d}-{m:02d}-01"
+        end   = f"{y:04d}-{m:02d}-{last_day:02d}"
+        result = (
+            get_supabase().table("schedules")
+            .select("id, date, content, created_at")
+            .eq("line_user_id", user_id)
+            .gte("date", start)
+            .lte("date", end)
+            .order("date")
+            .order("created_at")
+            .execute()
+        )
+        return jsonify({"schedules": result.data or []})
+    except Exception as e:
+        logging.exception("schedule get error: %s", e)
+        return jsonify({"error": "server error"}), 500
+
+
+@app.route("/liff/api/schedule", methods=["POST"])
+def liff_api_schedule_post():
+    data    = request.get_json(silent=True) or {}
+    user_id = data.get("line_user_id", "").strip()
+    date_s  = data.get("date", "").strip()
+    content = data.get("content", "").strip()
+    if not user_id or not date_s or not content:
+        return jsonify({"error": "missing params"}), 400
+    try:
+        result = (
+            get_supabase().table("schedules")
+            .insert({"line_user_id": user_id, "date": date_s, "content": content})
+            .execute()
+        )
+        return jsonify(result.data[0] if result.data else {"error": "insert failed"})
+    except Exception as e:
+        logging.exception("schedule post error: %s", e)
+        return jsonify({"error": "server error"}), 500
+
+
+@app.route("/liff/api/schedule/<schedule_id>", methods=["DELETE"])
+def liff_api_schedule_delete(schedule_id):
+    try:
+        get_supabase().table("schedules").delete().eq("id", schedule_id).execute()
+        return jsonify({"success": True})
+    except Exception as e:
+        logging.exception("schedule delete error: %s", e)
+        return jsonify({"error": "server error"}), 500
 
 
 # ── ③ 特商法ページ・利用規約 ────────────────────────
