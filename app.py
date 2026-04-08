@@ -3925,13 +3925,21 @@ function tryRestore(){{
   }}catch(e){{ console.log("restore error",e); }}
 }}
 
+// 即座にUIを表示（LIFFの初期化を待たない）
+renderList();
+
+// LIFF初期化（バックグラウンド・3秒タイムアウト）
+var liffTimer = setTimeout(function(){{
+  tryRestore();
+}}, 3000);
+
 liff.init({{liffId:LIFF_ID}}).then(function(){{
+  clearTimeout(liffTimer);
   liffOK = true;
   tryRestore();
-  renderList();
 }}).catch(function(){{
+  clearTimeout(liffTimer);
   tryRestore();
-  renderList();
 }});
 
 function fmtDate(ts){{
