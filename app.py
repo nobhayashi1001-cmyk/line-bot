@@ -3651,216 +3651,137 @@ _LIFF_MEMO_HTML = """\
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=yes,maximum-scale=2">
 <title>覚え書き</title>
-<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
-:root {{
-  --bg:     #F5E6A3;
-  --btn-bg: #8B1A1A;
-  --btn-text:#FFD700;
-  --green:  #27AE60;
-  --text:   #4A2C0A;
-  --sub:    #6B4010;
-  --ruled:  #C8A060;
-  --card:   #FFF8DC;
-  --border: #8B6914;
-  --shadow: rgba(0,0,0,0.12);
-}}
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{
-  background: var(--bg);
-  color: var(--text);
+  background: #F5E6A3;
+  color: #4A2C0A;
   font-family: 'Hiragino Mincho ProN','Yu Mincho','Noto Serif JP',serif;
   font-size: 18px;
   min-height: 100vh;
-  padding-bottom: 100px;
+  padding-bottom: 120px;
 }}
 .app-header {{
   background: #8B1A1A;
   color: #FFD700;
-  padding: 14px 50px;
+  padding: 14px 55px;
   text-align: center;
   font-size: 22px;
   font-weight: bold;
   letter-spacing: 0.1em;
   border-bottom: 4px solid #5C1010;
-  position: sticky;
-  top: 0;
-  z-index: 100;
   position: relative;
-}}
-.header-save {{
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: #FFD700;
-  color: #8B1A1A;
-  border: none;
-  border-radius: 8px;
-  font-size: 16px;
-  font-weight: bold;
-  padding: 8px 14px;
-  cursor: pointer;
-  display: none;
 }}
 .back-btn {{
   position: absolute;
-  left: 10px;
-  top: 50%;
+  left: 10px; top: 50%;
   transform: translateY(-50%);
-  background: none;
-  border: none;
-  color: #FFD700;
-  font-size: 26px;
-  cursor: pointer;
+  background: none; border: none;
+  color: #FFD700; font-size: 28px;
+  cursor: pointer; padding: 6px 12px;
   display: none;
-  padding: 4px 10px;
-  line-height: 1;
 }}
-/* リスト */
-#view-list {{ display: block; }}
+.header-save {{
+  position: absolute;
+  right: 10px; top: 50%;
+  transform: translateY(-50%);
+  background: #FFD700; color: #8B1A1A;
+  border: none; border-radius: 8px;
+  font-size: 17px; font-weight: bold;
+  padding: 8px 16px; cursor: pointer;
+  display: none;
+}}
 .memo-item {{
-  display: flex;
-  align-items: center;
-  padding: 16px 18px;
-  border-bottom: 2px dashed var(--ruled);
-  cursor: pointer;
-  background: var(--card-bg);
+  display: flex; align-items: center;
+  padding: 18px 18px;
+  border-bottom: 2px dashed #C8A060;
+  cursor: pointer; background: #FFF8DC;
 }}
-.memo-item:active {{ background: var(--bg); }}
 .item-body {{ flex: 1; min-width: 0; }}
 .item-title {{
-  font-size: 18px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-weight: bold;
+  font-size: 18px; font-weight: bold;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }}
-.item-date {{ font-size: 13px; color: #999; margin-top: 4px; }}
-.item-arrow {{ color: #CCC; font-size: 24px; padding-left: 10px; flex-shrink: 0; }}
+.item-date {{ font-size: 13px; color: #888; margin-top: 4px; }}
+.item-arrow {{ color: #C8A060; font-size: 22px; padding-left: 10px; flex-shrink: 0; }}
 .empty-msg {{
-  text-align: center;
-  padding: 60px 20px;
-  color: #AAA;
-  font-size: 19px;
-  line-height: 2.2;
+  text-align: center; padding: 60px 20px;
+  color: #AAA; font-size: 18px; line-height: 2.4;
 }}
-/* お引越しボックス */
 .migration-box {{
-  margin: 20px 16px 16px;
+  margin: 24px 16px 16px;
   padding: 16px;
-  background: var(--card-bg);
-  border: 2px solid var(--border);
+  background: #FFF8DC;
+  border: 2px solid #8B6914;
   border-radius: 8px;
-  box-shadow: 2px 3px 0 var(--border);
+  box-shadow: 2px 3px 0 #8B6914;
 }}
 .migration-title {{
-  font-size: 15px;
-  color: var(--sub);
-  margin-bottom: 12px;
-  text-align: center;
-  font-weight: bold;
+  font-size: 15px; color: #6B4010;
+  margin-bottom: 12px; text-align: center; font-weight: bold;
 }}
 .migration-btn {{
-  display: block;
-  width: 100%;
-  padding: 18px;
-  font-size: 18px;
-  font-weight: bold;
-  background: var(--btn-bg);
-  color: var(--btn-text);
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  box-shadow: 0 4px 0 #5C1010;
+  display: block; width: 100%;
+  padding: 18px; font-size: 18px; font-weight: bold;
+  background: #8B1A1A; color: #FFD700;
+  border: none; border-radius: 8px;
+  cursor: pointer; box-shadow: 0 4px 0 #5C1010;
   letter-spacing: 0.05em;
 }}
-.migration-btn:active {{ transform: translateY(3px); box-shadow: none; }}
-/* FAB */
 .fab-new {{
   position: fixed;
-  bottom: 30px;
-  right: 24px;
-  width: 66px;
-  height: 66px;
+  bottom: 36px; right: 24px;
+  width: 72px; height: 72px;
   border-radius: 50%;
-  background: var(--btn-bg);
-  color: var(--btn-text);
-  font-size: 38px;
-  border: none;
+  background: #8B1A1A; color: #FFD700;
+  font-size: 42px; font-weight: bold;
+  border: 4px solid #FFD700;
   cursor: pointer;
-  box-shadow: 0 4px 12px var(--shadow);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 200;
+  -webkit-tap-highlight-color: rgba(255,215,0,0.3);
 }}
-/* 編集画面 */
 #view-edit {{ display: none; }}
 .edit-date {{
-  padding: 10px 16px;
-  font-size: 14px;
-  color: #999;
-  background: var(--card-bg);
-  border-bottom: 1px solid var(--ruled);
+  padding: 10px 16px; font-size: 13px; color: #888;
+  background: #FFF8DC; border-bottom: 1px solid #C8A060;
 }}
-.notebook-wrap {{
-  padding: 8px 16px 0;
-  background: var(--bg);
-}}
+.notebook-wrap {{ padding: 8px 16px 0; background: #F5E6A3; }}
 .notebook-textarea {{
-  width: 100%;
-  min-height: 40vh;
-  font-size: 20px;
-  line-height: 2em;
+  width: 100%; min-height: 45vh;
+  font-size: 20px; line-height: 2em;
   padding: 0.2em 6px;
-  border: none;
-  outline: none;
-  resize: none;
+  border: none; outline: none; resize: none;
   background:
     repeating-linear-gradient(
-      var(--bg),
-      var(--bg) calc(2em - 1px),
-      var(--ruled) calc(2em - 1px),
-      var(--ruled) 2em
+      #F5E6A3,
+      #F5E6A3 calc(2em - 1px),
+      #C8A060 calc(2em - 1px),
+      #C8A060 2em
     );
-  font-family: inherit;
-  color: var(--text);
-  word-break: break-all;
+  font-family: inherit; color: #4A2C0A; word-break: break-all;
 }}
 .btn-row {{
-  display: flex;
-  gap: 12px;
-  padding: 12px 16px;
-  background: var(--bg);
-  border-top: 2px solid var(--ruled);
+  display: flex; gap: 12px;
+  padding: 14px 16px;
+  background: #F5E6A3;
+  border-top: 2px solid #C8A060;
 }}
 .btn-save {{
-  flex: 2;
-  padding: 18px;
-  font-size: 20px;
-  font-weight: bold;
-  background: var(--btn-bg);
-  color: var(--btn-text);
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  box-shadow: 0 4px 0 #5C1010;
-  letter-spacing: 0.05em;
+  flex: 2; padding: 20px;
+  font-size: 20px; font-weight: bold;
+  background: #8B1A1A; color: #FFD700;
+  border: none; border-radius: 8px;
+  cursor: pointer; box-shadow: 0 4px 0 #5C1010;
 }}
-.btn-save:active {{ transform: translateY(3px); box-shadow: none; }}
 .btn-del {{
-  flex: 1;
-  padding: 18px;
-  font-size: 18px;
-  font-weight: bold;
-  background: var(--bg);
-  color: var(--sub);
-  border: 2px solid var(--border);
-  border-radius: 8px;
+  flex: 1; padding: 20px;
+  font-size: 18px; font-weight: bold;
+  background: #F5E6A3; color: #6B4010;
+  border: 2px solid #8B6914; border-radius: 8px;
   cursor: pointer;
 }}
-.btn-del:active {{ background: #D5D8DC; }}
 </style>
 </head>
 <body>
@@ -3877,8 +3798,8 @@ body {{
     <div class="migration-title">&#128230; 機種変更のときのデータお引越し</div>
     <button class="migration-btn" onclick="doMigration()">お引越しの準備をする</button>
   </div>
-  <button class="fab-new" onclick="newMemo()">&#65291;</button>
 </div>
+<button class="fab-new" id="fab-new">&#65291;</button>
 
 <div id="view-edit">
   <div class="edit-date" id="edit-date"></div>
@@ -3895,53 +3816,11 @@ body {{
 var LIFF_ID  = "{liff_memo_id}";
 var STOR_KEY = "kakioki_v1";
 var editId   = null;
-var liffOK   = false;
 
 function getMemos(){{ try{{ return JSON.parse(localStorage.getItem(STOR_KEY)||"[]"); }}catch(e){{ return []; }} }}
 function setMemos(a){{ localStorage.setItem(STOR_KEY, JSON.stringify(a)); }}
 function genId(){{ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }}
-
-function b64enc(obj){{
-  var j = JSON.stringify(obj);
-  return btoa(encodeURIComponent(j).replace(/%([0-9A-F]{{2}})/g, function(_,p){{
-    return String.fromCharCode(parseInt(p,16));
-  }}));
-}}
-function b64dec(s){{
-  return JSON.parse(decodeURIComponent(Array.prototype.map.call(atob(s),function(c){{
-    return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);
-  }}).join('')));
-}}
-
-function tryRestore(){{
-  var dp = new URLSearchParams(location.search).get('data');
-  if(!dp) return;
-  try{{
-    var arr = b64dec(dp);
-    if(confirm(arr.length+"件のメモが見つかりました。\nこの端末に復元しますか？")){{
-      setMemos(arr);
-      alert("復元しました！（"+arr.length+"件）");
-    }}
-  }}catch(e){{ console.log("restore error",e); }}
-}}
-
-// 即座にUIを表示（LIFFの初期化を待たない）
-renderList();
-
-// LIFF初期化（バックグラウンド・3秒タイムアウト）
-var liffTimer = setTimeout(function(){{
-  tryRestore();
-}}, 3000);
-
-liff.init({{liffId:LIFF_ID}}).then(function(){{
-  clearTimeout(liffTimer);
-  liffOK = true;
-  tryRestore();
-}}).catch(function(){{
-  clearTimeout(liffTimer);
-  tryRestore();
-}});
-
+function esc(s){{ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }}
 function fmtDate(ts){{
   var d=new Date(ts);
   var w=["日","月","火","水","木","金","土"][d.getDay()];
@@ -3952,7 +3831,7 @@ function fmtDate(ts){{
 function renderList(){{
   var ms=getMemos(), el=document.getElementById("memo-list");
   if(!ms.length){{
-    el.innerHTML='<div class="empty-msg">まだメモがありません。<br>右下の ＋ から書き始めましょう。</div>';
+    el.innerHTML='<div class="empty-msg">まだメモがありません。<br>下の ＋ から書き始めましょう。</div>';
     return;
   }}
   var h="";
@@ -3970,15 +3849,18 @@ function renderList(){{
 function showList(){{
   document.getElementById("view-list").style.display="block";
   document.getElementById("view-edit").style.display="none";
+  document.getElementById("fab-new").style.display="flex";
   document.getElementById("back-btn").style.display="none";
   document.getElementById("header-save").style.display="none";
-  document.getElementById("header-title").textContent="📝 覚え書き";
+  document.getElementById("header-title").textContent="\u270f\ufe0f \u899a\u3048\u66f8\u304d";
   editId=null;
   renderList();
 }}
+
 function showEdit(title){{
   document.getElementById("view-list").style.display="none";
   document.getElementById("view-edit").style.display="block";
+  document.getElementById("fab-new").style.display="none";
   document.getElementById("back-btn").style.display="block";
   document.getElementById("header-save").style.display="block";
   document.getElementById("header-title").textContent=title;
@@ -3988,9 +3870,8 @@ function newMemo(){{
   editId=null;
   document.getElementById("memo-ta").value="";
   document.getElementById("btn-del").style.display="none";
-  document.getElementById("edit-date").textContent=fmtDate(Date.now());
-  showEdit("新しいメモ");
-  setTimeout(function(){{document.getElementById("memo-ta").focus();}},150);
+  document.getElementById("edit-date").textContent=fmtDate(Date.now())+" （新規）";
+  showEdit("\u65b0\u3057\u3044\u30e1\u30e2");
 }}
 
 function openMemo(id){{
@@ -4000,15 +3881,15 @@ function openMemo(id){{
   document.getElementById("memo-ta").value=m.content||"";
   document.getElementById("btn-del").style.display="inline-block";
   document.getElementById("edit-date").textContent=fmtDate(m.ts);
-  showEdit("メモを見る・直す");
+  showEdit("\u30e1\u30e2\u3092\u898b\u308b\u30fb\u76f4\u3059");
 }}
 
 function saveMemo(){{
   var c=document.getElementById("memo-ta").value.trim();
-  if(!c){{alert("何か書いてから保存してください。");return;}}
+  if(!c){{ alert("\u4f55\u304b\u66f8\u3044\u3066\u304b\u3089\u4fdd\u5b58\u3057\u3066\u304f\u3060\u3055\u3044\u3002"); return; }}
   var ms=getMemos();
   if(editId){{
-    ms=ms.map(function(m){{return m.id===editId?{{id:m.id,content:c,ts:Date.now()}}:m;}});
+    ms=ms.map(function(m){{ return m.id===editId?{{id:m.id,content:c,ts:Date.now()}}:m; }});
   }}else{{
     ms.unshift({{id:genId(),content:c,ts:Date.now()}});
   }}
@@ -4018,36 +3899,53 @@ function saveMemo(){{
 
 function deleteMemo(){{
   if(!editId)return;
-  if(!confirm("このメモを消去しますか？"))return;
+  if(!confirm("\u3053\u306e\u30e1\u30e2\u3092\u6d88\u53bb\u3057\u307e\u3059\u304b\uff1f"))return;
   setMemos(getMemos().filter(function(m){{return m.id!==editId;}}));
   showList();
 }}
 
-function doMigration(){{
-  var ms=getMemos();
-  if(!ms.length){{alert("まだメモがありません。");return;}}
-  var enc=encodeURIComponent(b64enc(ms));
-  var url="https://liff.line.me/"+LIFF_ID+"/memo?data="+enc;
-  var msg="📝 覚え書きのお引越し用リンクです。\n新しいスマホでこのリンクをタップするとメモが戻ります。\n\n"+url;
-  if(msg.length>4900){{
-    alert("メモが多すぎてリンクが長くなりすぎます。\n古いメモをいくつか消去してから試してください。");
-    return;
-  }}
-  if(liffOK&&liff.isInClient()){{
-    liff.sendMessages([{{type:"text",text:msg}}])
-      .then(function(){{alert("お引越し用メッセージをトークに送りました！\n新しいスマホでそのリンクをタップしてください。");  }})
-      .catch(function(){{copyMsg(msg);}});
-  }}else{{copyMsg(msg);}}
-}}
-function copyMsg(msg){{
-  if(navigator.clipboard){{
-    navigator.clipboard.writeText(msg).then(function(){{
-      alert("お引越し用リンクをコピーしました。\nLINEに貼り付けて自分に送ってください。");
-    }});
-  }}else{{alert("LINEアプリ内で開いてください。");}}
+function b64enc(obj){{
+  var j=JSON.stringify(obj);
+  return btoa(encodeURIComponent(j).replace(/%([0-9A-F]{{2}})/g,function(_,p){{
+    return String.fromCharCode(parseInt(p,16));
+  }}));
 }}
 
-function esc(s){{return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}}
+function doMigration(){{
+  var ms=getMemos();
+  if(!ms.length){{ alert("\u307e\u3060\u30e1\u30e2\u304c\u3042\u308a\u307e\u305b\u3093\u3002"); return; }}
+  var enc=encodeURIComponent(b64enc(ms));
+  var url="https://liff.line.me/"+LIFF_ID+"?data="+enc;
+  var msg="\ud83d\udcdd \u899a\u3048\u66f8\u304d\u306e\u304a\u5f15\u8d8a\u3057\u7528\u30ea\u30f3\u30af\u3067\u3059\u3002\n\u65b0\u3057\u3044\u30b9\u30de\u30db\u3067\u3053\u306e\u30ea\u30f3\u30af\u3092\u30bf\u30c3\u30d7\u3059\u308b\u3068\u30e1\u30e2\u304c\u623b\u308a\u307e\u3059\u3002\n\n"+url;
+  if(navigator.clipboard){{
+    navigator.clipboard.writeText(msg).then(function(){{
+      alert("\u304a\u5f15\u8d8a\u3057\u7528\u30ea\u30f3\u30af\u3092\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f\u3002\nLINE\u306e\u30c8\u30fc\u30af\u306b\u8cbc\u308a\u4ed8\u3051\u3066\u81ea\u5206\u306b\u9001\u3063\u3066\u304f\u3060\u3055\u3044\u3002");
+    }}).catch(function(){{ showMigrationUrl(url); }});
+  }}else{{ showMigrationUrl(url); }}
+}}
+function showMigrationUrl(url){{
+  prompt("\u4e0b\u8a18\u306eURL\u3092\u30b3\u30d4\u30fc\u3057\u3066LINE\u306b\u9001\u3063\u3066\u304f\u3060\u3055\u3044\u3002", url);
+}}
+
+// URLにdataパラメータがあれば復元確認
+(function(){{
+  var dp=new URLSearchParams(location.search).get('data');
+  if(!dp)return;
+  try{{
+    var dec=JSON.parse(decodeURIComponent(Array.prototype.map.call(atob(dp),function(c){{
+      return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);
+    }}).join('')));
+    if(confirm(dec.length+"\u4ef6\u306e\u30e1\u30e2\u304c\u898b\u3064\u304b\u308a\u307e\u3057\u305f\u3002\n\u3053\u306e\u7aef\u672b\u306b\u5fa9\u5143\u3057\u307e\u3059\u304b\uff1f")){{
+      setMemos(dec);
+      alert("\u5fa9\u5143\u3057\u307e\u3057\u305f\uff01\uff08"+dec.length+"\u4ef6\uff09");
+    }}
+  }}catch(e){{ console.log("restore error",e); }}
+}})();
+
+// ＋ボタンのイベント（addEventListener で確実に登録）
+document.getElementById("fab-new").addEventListener("click", function(){{ newMemo(); }});
+
+renderList();
 </script>
 </body>
 </html>
