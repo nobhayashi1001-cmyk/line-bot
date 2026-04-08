@@ -3115,214 +3115,464 @@ _LIFF_SCHEDULE_HTML = """\
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=yes">
-<title>スケジュール</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=yes,maximum-scale=2">
+<title>お約束帳</title>
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
-{retro_css}
-body{{padding-bottom:80px}}
-.cal-nav{{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:var(--card-bg);border-bottom:2px solid var(--border)}}
-.cal-nav button{{font-size:24px;border:none;background:none;color:var(--header-bg);cursor:pointer;padding:4px 12px}}
-.month-label{{font-size:20px;font-weight:bold;color:var(--text)}}
-table.cal{{width:100%;border-collapse:collapse;table-layout:fixed}}
-table.cal th{{text-align:center;padding:8px 0;font-size:13px;color:var(--sub-text);border-bottom:2px solid var(--border)}}
-table.cal th.sun{{color:var(--header-bg)}}
-table.cal td{{text-align:center;padding:4px 2px;height:52px;cursor:pointer;border-bottom:1px dashed var(--divider);vertical-align:top}}
-table.cal td:active{{background:var(--card-bg)}}
-.dn{{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;font-size:19px;border-radius:50%;color:var(--text)}}
-.dn.today{{background:var(--header-bg);color:var(--header-text);font-weight:bold}}
-.dn.sun{{color:var(--header-bg)}}
-.dn.sat{{color:var(--sub-text)}}
-.dot{{display:block;width:6px;height:6px;background:var(--header-bg);border-radius:50%;margin:1px auto 0}}
-.day-panel{{display:none;padding:16px;background:var(--bg);border-top:3px solid var(--border)}}
-.day-title{{font-size:19px;font-weight:bold;color:var(--header-bg);margin-bottom:12px}}
-.note-item{{display:flex;align-items:center;background:var(--card-bg);border:2px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;box-shadow:2px 2px 0 var(--border)}}
-.note-text{{flex:1;font-size:16px;line-height:1.5;white-space:pre-wrap;word-break:break-all}}
-.note-del{{background:none;border:1px solid var(--border);border-radius:6px;color:var(--sub-text);font-size:13px;padding:4px 8px;cursor:pointer;flex-shrink:0;margin-left:8px}}
-.no-note{{color:var(--sub-text);font-size:16px;text-align:center;padding:12px 0}}
-.add-row{{display:flex;gap:8px;margin-top:12px}}
-.add-input{{flex:1;font-size:16px;border:2px solid var(--border);border-radius:8px;padding:8px;background:#fffff0;color:var(--text);font-family:inherit}}
-.add-btn{{padding:8px 14px;font-size:15px;font-weight:bold;background:var(--btn-bg);color:var(--btn-text);border:none;border-radius:8px;cursor:pointer;white-space:nowrap}}
-.backup-section{{margin:16px;padding:14px;background:var(--card-bg);border:2px solid var(--border);border-radius:10px;box-shadow:2px 3px 0 var(--border)}}
-.backup-title{{font-size:14px;font-weight:bold;color:var(--sub-text);margin-bottom:8px}}
-.backup-btn{{display:block;width:100%;padding:12px;font-size:16px;font-weight:bold;background:var(--btn-bg);color:var(--btn-text);border:none;border-radius:8px;cursor:pointer;margin-bottom:10px}}
-.restore-ta{{width:100%;font-size:13px;border:2px solid var(--border);border-radius:8px;padding:8px;min-height:80px;margin-bottom:8px;background:#fffff0;color:var(--text);font-family:inherit}}
-.restore-btn{{display:block;width:100%;padding:10px;font-size:14px;background:var(--bg);color:var(--text);border:2px solid var(--border);border-radius:8px;cursor:pointer}}
+:root {{
+  --paper:  #FDF5E6;
+  --ink:    #333333;
+  --red:    #E74C3C;
+  --sunday: #C0392B;
+  --green:  #27AE60;
+  --blue:   #2471A3;
+  --brown:  #8B4513;
+  --line:   #C8A87A;
+  --card:   #FFFBF0;
+  --dim:    #AAA;
+  --today-bg: #FFF3CD;
+}}
+* {{ box-sizing: border-box; margin: 0; padding: 0; }}
+body {{
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'Hiragino Mincho ProN','Yu Mincho','Noto Serif JP',serif;
+  font-size: 18px;
+  min-height: 100vh;
+  padding-bottom: 120px;
+}}
+/* ヘッダー */
+.app-header {{
+  background: #8B0000;
+  color: #FDF5E6;
+  padding: 14px 50px;
+  text-align: center;
+  font-size: 22px;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  border-bottom: 4px solid #5C0000;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}}
+.back-btn {{
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #FDF5E6;
+  font-size: 26px;
+  cursor: pointer;
+  display: none;
+  padding: 4px 10px;
+  line-height: 1;
+}}
+/* 今日のカード */
+.today-card {{
+  margin: 16px;
+  padding: 16px 18px;
+  background: var(--today-bg);
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 2px 3px 0 var(--line);
+}}
+.today-label {{
+  font-size: 14px;
+  color: var(--brown);
+  font-weight: bold;
+  margin-bottom: 6px;
+}}
+.today-date {{
+  font-size: 22px;
+  font-weight: bold;
+  color: var(--ink);
+  margin-bottom: 10px;
+}}
+.today-msg {{
+  font-size: 18px;
+  line-height: 1.8;
+  color: var(--ink);
+}}
+.today-event {{
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--line);
+  font-size: 20px;
+}}
+.today-event:last-child {{ border-bottom: none; }}
+.today-event-text {{ flex: 1; }}
+/* セクション */
+.section-title {{
+  padding: 10px 16px 6px;
+  font-size: 14px;
+  font-weight: bold;
+  color: var(--brown);
+  border-bottom: 2px solid var(--line);
+  background: var(--paper);
+  letter-spacing: 0.1em;
+}}
+.empty-future {{
+  text-align: center;
+  padding: 30px 20px;
+  color: var(--dim);
+  font-size: 18px;
+  line-height: 2;
+}}
+/* 予定リスト */
+.event-item {{
+  padding: 14px 16px;
+  border-bottom: 1px dashed var(--line);
+  background: var(--card);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}}
+.event-item.past {{
+  background: var(--paper);
+  opacity: 0.6;
+}}
+.event-left {{ flex: 1; min-width: 0; }}
+.event-date {{
+  font-size: 24px;
+  font-weight: bold;
+  color: var(--ink);
+  line-height: 1.2;
+}}
+.event-date.sun {{ color: var(--sunday); }}
+.event-content {{
+  font-size: 20px;
+  line-height: 1.5;
+  margin-top: 4px;
+  word-break: break-all;
+}}
+.del-btn {{
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #ECF0F1;
+  color: #999;
+  font-size: 20px;
+  border: 2px solid #BDC3C7;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+}}
+.del-btn:active {{ background: #E74C3C; color: #fff; border-color: #E74C3C; }}
+/* 過去の予定のトグル */
+.past-toggle {{
+  text-align: center;
+  padding: 12px;
+  color: var(--dim);
+  font-size: 15px;
+  cursor: pointer;
+  border-bottom: 1px dashed var(--line);
+}}
+/* ボタンエリア */
+.btn-area {{
+  margin: 20px 16px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}}
+.btn-add {{
+  width: 100%;
+  padding: 20px;
+  font-size: 20px;
+  font-weight: bold;
+  background: var(--green);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #1E8449;
+  letter-spacing: 0.05em;
+}}
+.btn-add:active {{ transform: translateY(3px); box-shadow: none; }}
+.btn-migrate {{
+  width: 100%;
+  padding: 16px;
+  font-size: 17px;
+  font-weight: bold;
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #1A5276;
+  letter-spacing: 0.05em;
+}}
+.btn-migrate:active {{ transform: translateY(3px); box-shadow: none; }}
+/* 追加画面 */
+#view-add {{ display: none; padding: 20px 16px; }}
+.field-label {{
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--brown);
+  margin-bottom: 8px;
+  margin-top: 20px;
+}}
+.field-label:first-child {{ margin-top: 0; }}
+.date-input {{
+  width: 100%;
+  padding: 16px;
+  font-size: 22px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+  font-family: inherit;
+}}
+.content-input {{
+  width: 100%;
+  padding: 14px;
+  font-size: 20px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--ink);
+  font-family: inherit;
+  min-height: 120px;
+  resize: vertical;
+  line-height: 1.6;
+}}
+.date-input:focus, .content-input:focus {{ outline: none; border-color: var(--brown); }}
+.btn-save {{
+  display: block;
+  width: 100%;
+  margin-top: 28px;
+  padding: 20px;
+  font-size: 22px;
+  font-weight: bold;
+  background: var(--red);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #922B21;
+  letter-spacing: 0.05em;
+}}
+.btn-save:active {{ transform: translateY(3px); box-shadow: none; }}
 </style>
 </head>
 <body>
-<div class="retro-header"><h1>&#128197; スケジュール</h1></div>
-<div class="cal-nav">
-  <button onclick="changeMonth(-1)">&#9664;</button>
-  <span class="month-label" id="month-label"></span>
-  <button onclick="changeMonth(1)">&#9654;</button>
+
+<div class="app-header">
+  <button class="back-btn" id="back-btn" onclick="showList()">&#9664;</button>
+  <span id="header-title">&#128197; お約束帳</span>
 </div>
-<table class="cal">
-  <thead><tr>
-    <th class="sun">日</th><th>月</th><th>火</th>
-    <th>水</th><th>木</th><th>金</th><th>土</th>
-  </tr></thead>
-  <tbody id="cal-body"></tbody>
-</table>
-<div class="day-panel" id="day-panel">
-  <div class="day-title" id="day-title"></div>
-  <div id="note-list"></div>
-  <div class="add-row">
-    <input class="add-input" id="add-input" type="text" placeholder="予定を入力...">
-    <button class="add-btn" onclick="addNote()">追加</button>
+
+<!-- リスト画面 -->
+<div id="view-list">
+  <!-- 今日のカード -->
+  <div class="today-card">
+    <div class="today-label">&#9728;&#65038; 今日</div>
+    <div class="today-date" id="today-date"></div>
+    <div id="today-content"></div>
+  </div>
+  <!-- これからの予定 -->
+  <div class="section-title">&#9650; これからのお約束</div>
+  <div id="future-list"></div>
+  <!-- 過去の予定 -->
+  <div id="past-section" style="display:none">
+    <div class="section-title" style="color:var(--dim)">&#9660; 過去のお約束</div>
+    <div id="past-list"></div>
+  </div>
+  <!-- ボタン -->
+  <div class="btn-area">
+    <button class="btn-add" onclick="showAdd()">&#65291; 新しいお約束を追加する</button>
+    <button class="btn-migrate" onclick="doMigration()">&#128230; 機種変更のお引越し準備</button>
   </div>
 </div>
-<div class="backup-section">
-  <div class="backup-title">&#128230; 機種変更・バックアップ</div>
-  <button class="backup-btn" onclick="doBackup()">LINEにバックアップを送る</button>
-  <div class="backup-title" style="margin-top:10px">復元（バックアップのテキストを貼り付け）</div>
-  <textarea class="restore-ta" id="restore-ta" placeholder="バックアップテキストをここに貼り付け..."></textarea>
-  <button class="restore-btn" onclick="doRestore()">復元する</button>
+
+<!-- 追加画面 -->
+<div id="view-add">
+  <div class="field-label">&#128197; 日付</div>
+  <input class="date-input" type="date" id="date-input">
+  <div class="field-label">&#128221; 内容</div>
+  <textarea class="content-input" id="content-input" placeholder="例：病院（定期検診）、孫の運動会..."></textarea>
+  <button class="btn-save" onclick="saveEvent()">保存する</button>
 </div>
+
 <script>
-var LIFF_ID = "{liff_schedule_id}";
-var STORE_KEY = "liff_schedule_v1";
-var curYear, curMonth, selDate = "";
+var LIFF_ID  = "{liff_schedule_id}";
+var STOR_KEY = "oyakusoku_v1";
+var liffOK   = false;
+var showPast = false;
 
-(function(){{
-  var t = new Date();
-  curYear = t.getFullYear();
-  curMonth = t.getMonth();
-}})();
+function getEvents(){{ try{{ return JSON.parse(localStorage.getItem(STOR_KEY)||"[]"); }}catch(e){{ return []; }} }}
+function setEvents(a){{ localStorage.setItem(STOR_KEY, JSON.stringify(a)); }}
+function genId(){{ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }}
 
-function getData(){{
-  try{{ return JSON.parse(localStorage.getItem(STORE_KEY)||"{{}}"); }}catch(e){{ return {{}}; }}
+function todayStr(){{
+  var d=new Date();
+  return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 }}
-function setData(obj){{ localStorage.setItem(STORE_KEY, JSON.stringify(obj)); }}
 function pad(n){{ return n<10?"0"+n:""+n; }}
-function ds(y,m,d){{ return y+"-"+pad(m+1)+"-"+pad(d); }}
 
-function changeMonth(delta){{
-  curMonth += delta;
-  if(curMonth<0){{ curMonth=11; curYear--; }}
-  if(curMonth>11){{ curMonth=0; curYear++; }}
-  document.getElementById("day-panel").style.display="none";
-  selDate="";
-  renderCal();
+function b64enc(obj){{
+  var j=JSON.stringify(obj);
+  return btoa(encodeURIComponent(j).replace(/%([0-9A-F]{{2}})/g,function(_,p){{
+    return String.fromCharCode(parseInt(p,16));
+  }}));
+}}
+function b64dec(s){{
+  return JSON.parse(decodeURIComponent(Array.prototype.map.call(atob(s),function(c){{
+    return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);
+  }}).join('')));
 }}
 
-function renderCal(){{
-  document.getElementById("month-label").textContent=curYear+"年"+(curMonth+1)+"月";
-  var data=getData();
-  var today=new Date();
-  var todayDs=ds(today.getFullYear(),today.getMonth(),today.getDate());
-  var firstDow=new Date(curYear,curMonth,1).getDay();
-  var lastDay=new Date(curYear,curMonth+1,0).getDate();
-  var html=""; var day=1-firstDow;
-  for(var r=0;r<6;r++){{
-    var row="<tr>"; var any=false;
-    for(var c=0;c<7;c++,day++){{
-      if(day<1||day>lastDay){{ row+="<td></td>"; }}
-      else{{
-        any=true;
-        var d2=ds(curYear,curMonth,day);
-        var cls="dn"+(d2===todayDs?" today":"")+(c===0?" sun":"")+(c===6?" sat":"");
-        var dot=(data[d2]&&data[d2].length)?'<span class="dot"></span>':"";
-        var sel=d2===selDate?' style="background:var(--card-bg);outline:2px solid var(--border)"':"";
-        row+='<td'+sel+' onclick="selectDate(\''+d2+'\')"><span class="'+cls+'">'+day+"</span>"+dot+"</td>";
-      }}
+function tryRestore(){{
+  var dp=new URLSearchParams(location.search).get('data');
+  if(!dp)return;
+  try{{
+    var arr=b64dec(dp);
+    if(confirm(arr.length+"件のお約束が見つかりました。\nこの端末に復元しますか？")){{
+      setEvents(arr);
+      alert("復元しました！（"+arr.length+"件）");
     }}
-    row+="</tr>";
-    if(!any&&r>3)break;
-    html+=row;
+  }}catch(e){{ console.log("restore error",e); }}
+}}
+
+liff.init({{liffId:LIFF_ID}}).then(function(){{
+  liffOK=true; tryRestore(); renderAll();
+}}).catch(function(){{ tryRestore(); renderAll(); }});
+
+var WDAYS=["日","月","火","水","木","金","土"];
+function fmtDateStr(ds){{
+  var d=new Date(ds+"T00:00:00");
+  return (d.getMonth()+1)+"月"+d.getDate()+"日（"+WDAYS[d.getDay()]+"）";
+}}
+function isSun(ds){{
+  return new Date(ds+"T00:00:00").getDay()===0;
+}}
+function fmtTodayFull(){{
+  var d=new Date();
+  return d.getFullYear()+"年"+(d.getMonth()+1)+"月"+d.getDate()+"日（"+WDAYS[d.getDay()]+"）";
+}}
+
+function renderAll(){{
+  // 今日のカード
+  document.getElementById("today-date").textContent=fmtTodayFull();
+  var td=todayStr();
+  var evs=getEvents();
+  var todayEvs=evs.filter(function(e){{return e.date===td;}});
+  var tc=document.getElementById("today-content");
+  if(todayEvs.length){{
+    var h="";
+    todayEvs.forEach(function(e){{
+      h+='<div class="today-event">'
+        +'<span class="today-event-text">&#10022; '+esc(e.content)+'</span>'
+        +'</div>';
+    }});
+    tc.innerHTML=h;
+  }}else{{
+    tc.innerHTML='<div class="today-msg">今日のお約束はありません。<br>ゆっくりお過ごしください &#128578;</div>';
   }}
-  document.getElementById("cal-body").innerHTML=html;
+  // 振り分け
+  var future=evs.filter(function(e){{return e.date>=td&&e.date!==td;}});
+  var past=evs.filter(function(e){{return e.date<td;}});
+  future.sort(function(a,b){{return a.date<b.date?-1:1;}});
+  past.sort(function(a,b){{return a.date>b.date?-1:1;}});
+  // 未来
+  var fl=document.getElementById("future-list");
+  if(!future.length){{
+    fl.innerHTML='<div class="empty-future">これからのお約束はありません。<br>下のボタンから追加できます。</div>';
+  }}else{{
+    fl.innerHTML=future.map(function(e){{return eventHTML(e,false);}}).join('');
+  }}
+  // 過去
+  var ps=document.getElementById("past-section");
+  if(past.length){{
+    ps.style.display="block";
+    document.getElementById("past-list").innerHTML=past.map(function(e){{return eventHTML(e,true);}}).join('');
+  }}else{{
+    ps.style.display="none";
+  }}
 }}
 
-function selectDate(d){{
-  selDate=d;
-  var parts=d.split("-");
-  document.getElementById("day-title").textContent=parts[0]+"年"+parseInt(parts[1])+"月"+parseInt(parts[2])+"日";
-  document.getElementById("add-input").value="";
-  renderNotes();
-  document.getElementById("day-panel").style.display="block";
-  renderCal();
-  document.getElementById("day-panel").scrollIntoView({{behavior:"smooth"}});
+function eventHTML(e,isPast){{
+  var cls="event-item"+(isPast?" past":"");
+  var dateCls="event-date"+(isSun(e.date)?" sun":"");
+  return '<div class="'+cls+'">'
+    +'<div class="event-left">'
+    +'<div class="'+dateCls+'">'+fmtDateStr(e.date)+'</div>'
+    +'<div class="event-content">'+esc(e.content)+'</div>'
+    +'</div>'
+    +'<button class="del-btn" onclick="delEvent(\''+e.id+'\')">&#10005;</button>'
+    +'</div>';
 }}
 
-function renderNotes(){{
-  var data=getData();
-  var notes=data[selDate]||[];
-  if(!notes.length){{
-    document.getElementById("note-list").innerHTML='<div class="no-note">予定はありません</div>';
+function delEvent(id){{
+  if(!confirm("このお約束を消去しますか？"))return;
+  setEvents(getEvents().filter(function(e){{return e.id!==id;}}));
+  renderAll();
+}}
+
+function showList(){{
+  document.getElementById("view-list").style.display="block";
+  document.getElementById("view-add").style.display="none";
+  document.getElementById("back-btn").style.display="none";
+  document.getElementById("header-title").textContent="📅 お約束帳";
+  renderAll();
+}}
+
+function showAdd(){{
+  document.getElementById("view-list").style.display="none";
+  document.getElementById("view-add").style.display="block";
+  document.getElementById("back-btn").style.display="block";
+  document.getElementById("header-title").textContent="新しいお約束";
+  // デフォルト日付を明日に設定
+  var tmr=new Date(); tmr.setDate(tmr.getDate()+1);
+  document.getElementById("date-input").value=tmr.getFullYear()+"-"+pad(tmr.getMonth()+1)+"-"+pad(tmr.getDate());
+  document.getElementById("content-input").value="";
+  setTimeout(function(){{document.getElementById("content-input").focus();}},150);
+}}
+
+function saveEvent(){{
+  var date=document.getElementById("date-input").value;
+  var content=document.getElementById("content-input").value.trim();
+  if(!date){{alert("日付を選んでください。");return;}}
+  if(!content){{alert("内容を入力してください。");return;}}
+  var evs=getEvents();
+  evs.push({{id:genId(),date:date,content:content,ts:Date.now()}});
+  setEvents(evs);
+  showList();
+}}
+
+function doMigration(){{
+  var evs=getEvents();
+  if(!evs.length){{alert("まだお約束が登録されていません。");return;}}
+  var enc=encodeURIComponent(b64enc(evs));
+  var url="https://liff.line.me/"+LIFF_ID+"/schedule?data="+enc;
+  var msg="📅 お約束帳のお引越し用リンクです。\n新しいスマホでこのリンクをタップするとお約束が戻ります。\n\n"+url;
+  if(msg.length>4900){{
+    alert("お約束が多すぎてリンクが長くなりすぎます。\n古いお約束をいくつか消去してから試してください。");
     return;
   }}
-  var html="";
-  notes.forEach(function(n,i){{
-    html+='<div class="note-item"><span class="note-text">'+esc(n)+'</span>'
-        +'<button class="note-del" onclick="delNote('+i+')">削除</button></div>';
-  }});
-  document.getElementById("note-list").innerHTML=html;
-}}
-
-function addNote(){{
-  var v=document.getElementById("add-input").value.trim();
-  if(!v)return;
-  var data=getData();
-  if(!data[selDate])data[selDate]=[];
-  data[selDate].push(v);
-  setData(data);
-  document.getElementById("add-input").value="";
-  renderNotes();
-  renderCal();
-}}
-
-function delNote(i){{
-  var data=getData();
-  if(data[selDate]){{
-    data[selDate].splice(i,1);
-    if(!data[selDate].length)delete data[selDate];
-    setData(data);
-  }}
-  renderNotes();
-  renderCal();
-}}
-
-function doBackup(){{
-  var raw=localStorage.getItem(STORE_KEY)||"{{}}";
-  var msg="📅スケジュールバックアップ\n"+raw;
-  liff.init({{liffId:LIFF_ID}}).then(function(){{
-    if(!liff.isInClient()){{ copyFallback(msg); return; }}
+  if(liffOK&&liff.isInClient()){{
     liff.sendMessages([{{type:"text",text:msg}}])
-      .then(function(){{ alert("トークにバックアップを送信しました。\nLINEのトーク履歴バックアップに含まれます。"); }})
-      .catch(function(){{ copyFallback(msg); }});
-  }}).catch(function(){{ copyFallback(msg); }});
+      .then(function(){{alert("お引越し用メッセージをトークに送りました！\n新しいスマホでそのリンクをタップしてください。");}})
+      .catch(function(){{copyMsg(msg);}});
+  }}else{{copyMsg(msg);}}
 }}
-
-function copyFallback(msg){{
+function copyMsg(msg){{
   if(navigator.clipboard){{
-    navigator.clipboard.writeText(msg).then(function(){{ alert("データをコピーしました。\nLINEに貼り付けて送信してください。"); }});
-  }} else {{
-    alert("LINEアプリ内で開いてください。");
-  }}
+    navigator.clipboard.writeText(msg).then(function(){{
+      alert("お引越し用リンクをコピーしました。\nLINEに貼り付けて自分に送ってください。");
+    }});
+  }}else{{alert("LINEアプリ内で開いてください。");}}
 }}
 
-function doRestore(){{
-  var txt=document.getElementById("restore-ta").value.trim();
-  var m=txt.match(/\{{[\s\S]*\}}/);
-  if(m){{
-    try{{
-      var obj=JSON.parse(m[0]);
-      setData(obj);
-      document.getElementById("restore-ta").value="";
-      document.getElementById("day-panel").style.display="none";
-      selDate="";
-      renderCal();
-      alert("復元しました！");
-    }}catch(e){{ alert("データを読み取れません。バックアップテキストをそのまま貼り付けてください。"); }}
-  }} else {{ alert("バックアップデータが見つかりません。"); }}
-}}
-
-function esc(s){{ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }}
-
-renderCal();
+function esc(s){{return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}}
 </script>
-</body></html>
+</body>
+</html>
 """
 
 
