@@ -3398,181 +3398,383 @@ _LIFF_MEMO_HTML = """\
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=yes">
-<title>メモ帳</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=yes,maximum-scale=2">
+<title>覚え書き</title>
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
-{retro_css}
-body{{padding-bottom:80px}}
-.hd{{background:var(--header-bg);color:var(--header-text);padding:14px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10;border-bottom:3px solid var(--border)}}
-.hd-back{{font-size:22px;background:none;border:none;color:var(--header-text);cursor:pointer;display:none;padding:0 6px}}
-.hd h1{{font-size:20px;font-weight:bold;flex:1}}
-.memo-card{{display:flex;align-items:center;padding:14px 16px;border-bottom:2px dashed var(--divider);cursor:pointer;background:var(--card-bg)}}
-.memo-card:active{{background:var(--bg)}}
-.card-body{{flex:1;min-width:0}}
-.card-title{{font-size:17px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}}
-.card-date{{font-size:12px;color:var(--sub-text);margin-top:3px}}
-.empty-list{{text-align:center;padding:60px 20px;color:var(--sub-text);font-size:18px}}
-.fab{{position:fixed;bottom:90px;right:22px;width:56px;height:56px;border-radius:50%;background:var(--btn-bg);color:var(--btn-text);font-size:30px;border:none;cursor:pointer;box-shadow:3px 4px 0 #5C1010;display:flex;align-items:center;justify-content:center}}
-#view-edit{{display:none;padding:14px}}
-.memo-textarea{{width:100%;font-size:17px;border:2px solid var(--border);border-radius:8px;padding:12px;min-height:200px;resize:vertical;line-height:1.6;font-family:inherit;background:#fffff0;color:var(--text)}}
-.btn-save{{display:block;width:100%;margin-top:12px;padding:14px;font-size:17px;font-weight:bold;background:var(--btn-bg);color:var(--btn-text);border:none;border-radius:8px;cursor:pointer;box-shadow:2px 3px 0 #5C1010}}
-.btn-del{{display:block;width:100%;margin-top:8px;padding:12px;font-size:16px;background:var(--bg);color:#c62828;border:2px solid #c62828;border-radius:8px;cursor:pointer}}
-.backup-section{{margin:16px;padding:14px;background:var(--card-bg);border:2px solid var(--border);border-radius:10px;box-shadow:2px 3px 0 var(--border)}}
-.backup-title{{font-size:14px;font-weight:bold;color:var(--sub-text);margin-bottom:8px}}
-.backup-btn{{display:block;width:100%;padding:12px;font-size:15px;font-weight:bold;background:var(--btn-bg);color:var(--btn-text);border:none;border-radius:8px;cursor:pointer;margin-bottom:10px}}
-.restore-ta{{width:100%;font-size:13px;border:2px solid var(--border);border-radius:8px;padding:8px;min-height:70px;margin-bottom:8px;background:#fffff0;color:var(--text);font-family:inherit}}
-.restore-btn{{display:block;width:100%;padding:10px;font-size:14px;background:var(--bg);color:var(--text);border:2px solid var(--border);border-radius:8px;cursor:pointer}}
+:root {{
+  --cream:  #FFF9E5;
+  --red:    #C0392B;
+  --green:  #27AE60;
+  --blue:   #2471A3;
+  --text:   #2C1810;
+  --ruled:  #B8D4F0;
+  --card:   #FFFDF0;
+  --border: #C8A060;
+  --shadow: rgba(0,0,0,0.12);
+}}
+* {{ box-sizing: border-box; margin: 0; padding: 0; }}
+body {{
+  background: var(--cream);
+  color: var(--text);
+  font-family: 'Hiragino Mincho ProN','Yu Mincho','Noto Serif JP',serif;
+  font-size: 18px;
+  min-height: 100vh;
+  padding-bottom: 100px;
+}}
+.app-header {{
+  background: #8B0000;
+  color: #FFF9E5;
+  padding: 14px 50px;
+  text-align: center;
+  font-size: 22px;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+  border-bottom: 4px solid #5C0000;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}}
+.back-btn {{
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #FFF9E5;
+  font-size: 26px;
+  cursor: pointer;
+  display: none;
+  padding: 4px 10px;
+  line-height: 1;
+}}
+/* リスト */
+#view-list {{ display: block; }}
+.memo-item {{
+  display: flex;
+  align-items: center;
+  padding: 16px 18px;
+  border-bottom: 2px dashed var(--ruled);
+  cursor: pointer;
+  background: var(--card);
+}}
+.memo-item:active {{ background: #F0EDD5; }}
+.item-body {{ flex: 1; min-width: 0; }}
+.item-title {{
+  font-size: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: bold;
+}}
+.item-date {{ font-size: 13px; color: #999; margin-top: 4px; }}
+.item-arrow {{ color: #CCC; font-size: 24px; padding-left: 10px; flex-shrink: 0; }}
+.empty-msg {{
+  text-align: center;
+  padding: 60px 20px;
+  color: #AAA;
+  font-size: 19px;
+  line-height: 2.2;
+}}
+/* お引越しボックス */
+.migration-box {{
+  margin: 20px 16px 16px;
+  padding: 16px;
+  background: var(--card);
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 2px 3px 0 var(--border);
+}}
+.migration-title {{
+  font-size: 15px;
+  color: #777;
+  margin-bottom: 12px;
+  text-align: center;
+  font-weight: bold;
+}}
+.migration-btn {{
+  display: block;
+  width: 100%;
+  padding: 18px;
+  font-size: 18px;
+  font-weight: bold;
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #1A5276;
+  letter-spacing: 0.05em;
+}}
+.migration-btn:active {{ transform: translateY(3px); box-shadow: none; }}
+/* FAB */
+.fab-new {{
+  position: fixed;
+  bottom: 30px;
+  right: 24px;
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  background: var(--green);
+  color: #fff;
+  font-size: 38px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 12px var(--shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}}
+/* 編集画面 */
+#view-edit {{ display: none; }}
+.edit-date {{
+  padding: 10px 16px;
+  font-size: 14px;
+  color: #999;
+  background: var(--card);
+  border-bottom: 1px solid var(--ruled);
+}}
+.notebook-wrap {{
+  padding: 8px 16px 0;
+  background: var(--cream);
+}}
+.notebook-textarea {{
+  width: 100%;
+  min-height: 56vh;
+  font-size: 20px;
+  line-height: 2em;
+  padding: 0.2em 6px;
+  border: none;
+  outline: none;
+  resize: none;
+  background:
+    repeating-linear-gradient(
+      transparent,
+      transparent calc(2em - 1px),
+      var(--ruled) calc(2em - 1px),
+      var(--ruled) 2em
+    );
+  font-family: inherit;
+  color: var(--text);
+  word-break: break-all;
+  background-color: var(--cream);
+}}
+.btn-row {{
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--cream);
+  border-top: 2px solid var(--ruled);
+  position: sticky;
+  bottom: 0;
+}}
+.btn-save {{
+  flex: 2;
+  padding: 18px;
+  font-size: 20px;
+  font-weight: bold;
+  background: var(--red);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #922B21;
+  letter-spacing: 0.05em;
+}}
+.btn-save:active {{ transform: translateY(3px); box-shadow: none; }}
+.btn-del {{
+  flex: 1;
+  padding: 18px;
+  font-size: 18px;
+  font-weight: bold;
+  background: #ECF0F1;
+  color: #7F8C8D;
+  border: 2px solid #BDC3C7;
+  border-radius: 8px;
+  cursor: pointer;
+}}
+.btn-del:active {{ background: #D5D8DC; }}
 </style>
 </head>
 <body>
-<div class="hd">
-  <button class="hd-back" id="hd-back" onclick="showList()">&#8592;</button>
-  <h1 id="hd-title">&#128221; メモ帳</h1>
+
+<div class="app-header">
+  <button class="back-btn" id="back-btn" onclick="showList()">&#9664;</button>
+  <span id="header-title">&#128221; 覚え書き</span>
 </div>
+
 <div id="view-list">
   <div id="memo-list"></div>
-  <div class="backup-section">
-    <div class="backup-title">&#128230; 機種変更・バックアップ</div>
-    <button class="backup-btn" onclick="doBackup()">LINEにバックアップを送る</button>
-    <div class="backup-title" style="margin-top:10px">復元（バックアップのテキストを貼り付け）</div>
-    <textarea class="restore-ta" id="restore-ta" placeholder="バックアップテキストをここに貼り付け..."></textarea>
-    <button class="restore-btn" onclick="doRestore()">復元する</button>
+  <div class="migration-box">
+    <div class="migration-title">&#128230; 機種変更のときのデータお引越し</div>
+    <button class="migration-btn" onclick="doMigration()">お引越しの準備をする</button>
   </div>
-  <button class="fab" onclick="newMemo()">+</button>
+  <button class="fab-new" onclick="newMemo()">&#65291;</button>
 </div>
-<div id="view-edit">
-  <textarea class="memo-textarea" id="memo-ta" placeholder="メモを入力してください..."></textarea>
-  <button class="btn-save" onclick="saveMemo()">保存する</button>
-  <button class="btn-del" id="btn-del" style="display:none" onclick="deleteMemo()">削除する</button>
-</div>
-<script>
-var LIFF_ID = "{liff_memo_id}";
-var STORE_KEY = "liff_memos_v1";
-var editingId = null;
 
-function getMemos(){{ try{{ return JSON.parse(localStorage.getItem(STORE_KEY)||"[]"); }}catch(e){{ return []; }} }}
-function setMemos(arr){{ localStorage.setItem(STORE_KEY, JSON.stringify(arr)); }}
-function uid(){{ return Date.now().toString(36)+Math.random().toString(36).slice(2); }}
+<div id="view-edit">
+  <div class="edit-date" id="edit-date"></div>
+  <div class="notebook-wrap">
+    <textarea class="notebook-textarea" id="memo-ta" placeholder="ここにメモを書いてください..."></textarea>
+  </div>
+  <div class="btn-row">
+    <button class="btn-save" onclick="saveMemo()">保存する</button>
+    <button class="btn-del" id="btn-del" style="display:none" onclick="deleteMemo()">消去</button>
+  </div>
+</div>
+
+<script>
+var LIFF_ID  = "{liff_memo_id}";
+var STOR_KEY = "kakioki_v1";
+var editId   = null;
+var liffOK   = false;
+
+function getMemos(){{ try{{ return JSON.parse(localStorage.getItem(STOR_KEY)||"[]"); }}catch(e){{ return []; }} }}
+function setMemos(a){{ localStorage.setItem(STOR_KEY, JSON.stringify(a)); }}
+function genId(){{ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }}
+
+function b64enc(obj){{
+  var j = JSON.stringify(obj);
+  return btoa(encodeURIComponent(j).replace(/%([0-9A-F]{{2}})/g, function(_,p){{
+    return String.fromCharCode(parseInt(p,16));
+  }}));
+}}
+function b64dec(s){{
+  return JSON.parse(decodeURIComponent(Array.prototype.map.call(atob(s),function(c){{
+    return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);
+  }}).join('')));
+}}
+
+function tryRestore(){{
+  var dp = new URLSearchParams(location.search).get('data');
+  if(!dp) return;
+  try{{
+    var arr = b64dec(dp);
+    if(confirm(arr.length+"件のメモが見つかりました。\nこの端末に復元しますか？")){{
+      setMemos(arr);
+      alert("復元しました！（"+arr.length+"件）");
+    }}
+  }}catch(e){{ console.log("restore error",e); }}
+}}
+
+liff.init({{liffId:LIFF_ID}}).then(function(){{
+  liffOK = true;
+  tryRestore();
+  renderList();
+}}).catch(function(){{
+  tryRestore();
+  renderList();
+}});
+
 function fmtDate(ts){{
   var d=new Date(ts);
-  return d.getFullYear()+"/"+(d.getMonth()+1)+"/"+d.getDate()
+  var w=["日","月","火","水","木","金","土"][d.getDay()];
+  return d.getFullYear()+"年"+(d.getMonth()+1)+"月"+d.getDate()+"日（"+w+"）"
     +" "+d.getHours()+":"+(d.getMinutes()<10?"0":"")+d.getMinutes();
 }}
 
 function renderList(){{
-  var memos=getMemos();
-  if(!memos.length){{
-    document.getElementById("memo-list").innerHTML='<div class="empty-list">メモがありません<br>＋ボタンで作成</div>';
+  var ms=getMemos(), el=document.getElementById("memo-list");
+  if(!ms.length){{
+    el.innerHTML='<div class="empty-msg">まだメモがありません。<br>右下の ＋ から書き始めましょう。</div>';
     return;
   }}
-  var html="";
-  memos.forEach(function(m){{
-    var title=(m.content||"").replace(/\n/g," ").substring(0,20)||"（空のメモ）";
-    html+='<div class="memo-card" onclick="editMemo(\''+m.id+'\')">'
-        +'<div class="card-body">'
-        +'<div class="card-title">'+esc(title)+'</div>'
-        +'<div class="card-date">'+fmtDate(m.ts)+'</div>'
-        +'</div>'
-        +'<span style="color:var(--border);font-size:20px;padding:0 4px">&#8801;</span>'
-        +'</div>';
+  var h="";
+  ms.forEach(function(m){{
+    var t=(m.content||"").replace(/\n/g," ").substring(0,24)||"（空のメモ）";
+    h+='<div class="memo-item" onclick="openMemo(\''+m.id+'\')">'
+      +'<div class="item-body">'
+      +'<div class="item-title">'+esc(t)+'</div>'
+      +'<div class="item-date">'+fmtDate(m.ts)+'</div>'
+      +'</div><span class="item-arrow">&#9654;</span></div>';
   }});
-  document.getElementById("memo-list").innerHTML=html;
+  el.innerHTML=h;
 }}
 
 function showList(){{
   document.getElementById("view-list").style.display="block";
   document.getElementById("view-edit").style.display="none";
-  document.getElementById("hd-back").style.display="none";
-  document.getElementById("hd-title").textContent="📓 メモ帳";
-  editingId=null;
+  document.getElementById("back-btn").style.display="none";
+  document.getElementById("header-title").textContent="📝 覚え書き";
+  editId=null;
   renderList();
 }}
-
-function showEdit(){{
+function showEdit(title){{
   document.getElementById("view-list").style.display="none";
   document.getElementById("view-edit").style.display="block";
-  document.getElementById("hd-back").style.display="block";
+  document.getElementById("back-btn").style.display="block";
+  document.getElementById("header-title").textContent=title;
 }}
 
 function newMemo(){{
-  editingId=null;
+  editId=null;
   document.getElementById("memo-ta").value="";
   document.getElementById("btn-del").style.display="none";
-  document.getElementById("hd-title").textContent="新規メモ";
-  showEdit();
+  document.getElementById("edit-date").textContent=fmtDate(Date.now());
+  showEdit("新しいメモ");
+  setTimeout(function(){{document.getElementById("memo-ta").focus();}},150);
 }}
 
-function editMemo(id){{
-  var memos=getMemos();
-  var m=memos.find(function(x){{return x.id===id;}});
+function openMemo(id){{
+  var m=getMemos().find(function(x){{return x.id===id;}});
   if(!m)return;
-  editingId=id;
+  editId=id;
   document.getElementById("memo-ta").value=m.content||"";
-  document.getElementById("btn-del").style.display="block";
-  document.getElementById("hd-title").textContent="メモを編集";
-  showEdit();
+  document.getElementById("btn-del").style.display="inline-block";
+  document.getElementById("edit-date").textContent=fmtDate(m.ts);
+  showEdit("メモを見る・直す");
 }}
 
 function saveMemo(){{
-  var content=document.getElementById("memo-ta").value.trim();
-  if(!content)return;
-  var memos=getMemos();
-  if(editingId){{
-    memos=memos.map(function(m){{ return m.id===editingId?{{id:m.id,content:content,ts:Date.now()}}:m; }});
-  }} else {{
-    memos.unshift({{id:uid(),content:content,ts:Date.now()}});
+  var c=document.getElementById("memo-ta").value.trim();
+  if(!c){{alert("何か書いてから保存してください。");return;}}
+  var ms=getMemos();
+  if(editId){{
+    ms=ms.map(function(m){{return m.id===editId?{{id:m.id,content:c,ts:Date.now()}}:m;}});
+  }}else{{
+    ms.unshift({{id:genId(),content:c,ts:Date.now()}});
   }}
-  setMemos(memos);
+  setMemos(ms);
   showList();
 }}
 
 function deleteMemo(){{
-  if(!editingId)return;
-  if(!confirm("削除しますか？"))return;
-  var memos=getMemos().filter(function(m){{return m.id!==editingId;}});
-  setMemos(memos);
+  if(!editId)return;
+  if(!confirm("このメモを消去しますか？"))return;
+  setMemos(getMemos().filter(function(m){{return m.id!==editId;}}));
   showList();
 }}
 
-function doBackup(){{
-  var raw=localStorage.getItem(STORE_KEY)||"[]";
-  var msg="📒メモバックアップ\n"+raw;
-  liff.init({{liffId:LIFF_ID}}).then(function(){{
-    if(!liff.isInClient()){{ copyFallback(msg); return; }}
-    liff.sendMessages([{{type:"text",text:msg}}])
-      .then(function(){{ alert("トークにバックアップを送信しました。\nLINEのトーク履歴バックアップに含まれます。"); }})
-      .catch(function(){{ copyFallback(msg); }});
-  }}).catch(function(){{ copyFallback(msg); }});
-}}
-
-function copyFallback(msg){{
-  if(navigator.clipboard){{
-    navigator.clipboard.writeText(msg).then(function(){{ alert("データをコピーしました。\nLINEに貼り付けて送信してください。"); }});
-  }} else {{
-    alert("LINEアプリ内で開いてください。");
+function doMigration(){{
+  var ms=getMemos();
+  if(!ms.length){{alert("まだメモがありません。");return;}}
+  var enc=encodeURIComponent(b64enc(ms));
+  var url="https://liff.line.me/"+LIFF_ID+"/memo?data="+enc;
+  var msg="📝 覚え書きのお引越し用リンクです。\n新しいスマホでこのリンクをタップするとメモが戻ります。\n\n"+url;
+  if(msg.length>4900){{
+    alert("メモが多すぎてリンクが長くなりすぎます。\n古いメモをいくつか消去してから試してください。");
+    return;
   }}
+  if(liffOK&&liff.isInClient()){{
+    liff.sendMessages([{{type:"text",text:msg}}])
+      .then(function(){{alert("お引越し用メッセージをトークに送りました！\n新しいスマホでそのリンクをタップしてください。");  }})
+      .catch(function(){{copyMsg(msg);}});
+  }}else{{copyMsg(msg);}}
+}}
+function copyMsg(msg){{
+  if(navigator.clipboard){{
+    navigator.clipboard.writeText(msg).then(function(){{
+      alert("お引越し用リンクをコピーしました。\nLINEに貼り付けて自分に送ってください。");
+    }});
+  }}else{{alert("LINEアプリ内で開いてください。");}}
 }}
 
-function doRestore(){{
-  var txt=document.getElementById("restore-ta").value.trim();
-  var m=txt.match(/\[[\s\S]*\]/);
-  if(m){{
-    try{{
-      var arr=JSON.parse(m[0]);
-      setMemos(arr);
-      document.getElementById("restore-ta").value="";
-      renderList();
-      alert("復元しました！");
-    }}catch(e){{ alert("データを読み取れません。バックアップテキストをそのまま貼り付けてください。"); }}
-  }} else {{ alert("バックアップデータが見つかりません。"); }}
-}}
-
-function esc(s){{ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }}
-
-renderList();
+function esc(s){{return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}}
 </script>
-</body></html>
+</body>
+</html>
 """
 
 
