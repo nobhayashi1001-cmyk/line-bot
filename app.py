@@ -523,20 +523,20 @@ def _make_card_bubble(emoji: str, title: str, desc: str, btn_text: str,
 
 
 def _flex_consult_menu() -> FlexSendMessage:
-    """①相談する：3カード＋ナビカード"""
+    """①相談する：ナビカード＋3カード"""
     bubbles = [
-        _make_card_bubble("📱", "スマホの使いかた", "操作方法からアプリまで\nやさしく教えます",
-                          "スマホの使いかたを教えてください", "", _card_icon("smartphone.png")),
-        _make_card_bubble("🏥", "健康・からだ", "体の悩みや薬のこと\nいつでも相談できます",
-                          "健康について相談したいことがあります", "", _card_icon("health.png")),
-        _make_card_bubble("🏠", "お家の困りごと", "水漏れや電気など\n業者探しもお手伝い",
-                          "家の困りごとを相談したいです", "", _card_icon("home.png")),
         _retro_nav_bubble("ショートカット", [
             ("操作を教える",   "スマホの操作を教えてください"),
             ("病院を探す",     "近くの病院を探してください"),
             ("業者を呼ぶ",     "家の修繕業者を教えてください"),
             ("🏠 最初に戻る",  "最初に戻る"),
         ]),
+        _make_card_bubble("📱", "スマホの使いかた", "操作方法からアプリまで\nやさしく教えます",
+                          "スマホの使いかたを教えてください", "", _card_icon("smartphone.png")),
+        _make_card_bubble("🏥", "健康・からだ", "体の悩みや薬のこと\nいつでも相談できます",
+                          "健康について相談したいことがあります", "", _card_icon("health.png")),
+        _make_card_bubble("🏠", "お家の困りごと", "水漏れや電気など\n業者探しもお手伝い",
+                          "家の困りごとを相談したいです", "", _card_icon("home.png")),
     ]
     return FlexSendMessage(
         alt_text="何についてご相談ですか？",
@@ -545,19 +545,19 @@ def _flex_consult_menu() -> FlexSendMessage:
 
 
 def _flex_search_menu() -> FlexSendMessage:
-    """②探す：3カード＋ナビカード"""
+    """②探す：ナビカード＋3カード"""
     bubbles = [
+        _retro_nav_bubble("ショートカット", [
+            ("和食がいい",           "和食のお店を教えてください"),
+            ("いま開いている所",     "今開いているお店を教えてください"),
+            ("🏠 最初に戻る",        "最初に戻る"),
+        ]),
         _make_card_bubble("🍽️", "近くの美味しいお店", "和食・洋食・カフェなど\nおすすめを教えます",
                           "近くの美味しいお店を教えてください", "", _card_icon("restaurant.png")),
         _make_card_bubble("🏥", "近くの病院", "内科・整形外科など\n診療科で探せます",
                           "近くの病院を教えてください", "", _card_icon("hospital.png")),
         _make_card_bubble("🏛️", "公共施設・公園", "市役所・図書館・公園など\n近くの施設を案内",
                           "近くの公共施設や公園を教えてください", "", _card_icon("facility.png")),
-        _retro_nav_bubble("ショートカット", [
-            ("和食がいい",           "和食のお店を教えてください"),
-            ("いま開いている所",     "今開いているお店を教えてください"),
-            ("🏠 最初に戻る",        "最初に戻る"),
-        ]),
     ]
     return FlexSendMessage(
         alt_text="何をお探しですか？",
@@ -566,20 +566,20 @@ def _flex_search_menu() -> FlexSendMessage:
 
 
 def _flex_know_menu() -> FlexSendMessage:
-    """③知る：3カード＋ナビカード"""
+    """③知る：ナビカード＋3カード"""
     bubbles = [
-        _make_card_bubble("⛅", "今日の天気", "雨・気温・風など\n今日の天気を確認",
-                          "今日の天気を教えてください", "", _card_icon("weather.png")),
-        _make_card_bubble("🗑️", "ゴミの収集日", "燃えるゴミ・資源ゴミ\n粗大ゴミの出し方も",
-                          "ゴミの収集日を教えてください", "", _card_icon("trash.png")),
-        _make_card_bubble("🎉", "街のイベント", "近くのイベントや\n季節の行事を紹介",
-                          "近くの街のイベントを教えてください", "", _card_icon("event.png")),
         _retro_nav_bubble("ショートカット", [
             ("明日の天気は？",     "明日の天気を教えてください"),
             ("粗大ゴミの出し方",   "粗大ゴミの出し方を教えてください"),
             ("もっと見る",         "地域情報をもっと教えてください"),
             ("🏠 最初に戻る",      "最初に戻る"),
         ]),
+        _make_card_bubble("⛅", "今日の天気", "雨・気温・風など\n今日の天気を確認",
+                          "今日の天気を教えてください", "", _card_icon("weather.png")),
+        _make_card_bubble("🗑️", "ゴミの収集日", "燃えるゴミ・資源ゴミ\n粗大ゴミの出し方も",
+                          "ゴミの収集日を教えてください", "", _card_icon("trash.png")),
+        _make_card_bubble("🎉", "街のイベント", "近くのイベントや\n季節の行事を紹介",
+                          "近くの街のイベントを教えてください", "", _card_icon("event.png")),
     ]
     return FlexSendMessage(
         alt_text="何を知りたいですか？",
@@ -588,20 +588,20 @@ def _flex_know_menu() -> FlexSendMessage:
 
 
 def _flex_connect_menu() -> FlexSendMessage:
-    """④つながる：3カード＋ナビカード"""
+    """④つながる：ナビカード＋3カード"""
     bubbles = [
-        _make_card_bubble("🌸", "趣味のサークル", "手芸・園芸・将棋など\n同じ趣味の仲間を",
-                          "趣味のサークルを探したいです", "", _card_icon("circle.png")),
-        _make_card_bubble("👥", "地域の集まり", "町内会・老人会など\n地域の輪に加わろう",
-                          "地域の集まりについて教えてください", "", _card_icon("community.png")),
-        _make_card_bubble("📻", "昭和の思い出話", "懐かしい話を一緒に\n楽しみましょう",
-                          "昭和の思い出話をしましょう", "", _card_icon("retro.png")),
         _retro_nav_bubble("ショートカット", [
             ("散歩仲間",       "散歩仲間を探したいです"),
             ("ゲートボール",   "ゲートボールの情報を教えてください"),
             ("昔の話をする",   "昭和の思い出について話しましょう"),
             ("🏠 最初に戻る",  "最初に戻る"),
         ]),
+        _make_card_bubble("🌸", "趣味のサークル", "手芸・園芸・将棋など\n同じ趣味の仲間を",
+                          "趣味のサークルを探したいです", "", _card_icon("circle.png")),
+        _make_card_bubble("👥", "地域の集まり", "町内会・老人会など\n地域の輪に加わろう",
+                          "地域の集まりについて教えてください", "", _card_icon("community.png")),
+        _make_card_bubble("📻", "昭和の思い出話", "懐かしい話を一緒に\n楽しみましょう",
+                          "昭和の思い出話をしましょう", "", _card_icon("retro.png")),
     ]
     return FlexSendMessage(
         alt_text="つながりを広げましょう",
