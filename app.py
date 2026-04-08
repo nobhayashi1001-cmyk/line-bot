@@ -3651,6 +3651,10 @@ _LIFF_MEMO_HTML = """\
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=yes,maximum-scale=2">
 <title>覚え書き</title>
+<!-- 1. vConsole: 実機デバッグ用（問題解決後に削除） -->
+<script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
+<!-- 2. LIFF SDK -->
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{
@@ -3693,7 +3697,7 @@ body {{
 }}
 .memo-item {{
   display: flex; align-items: center;
-  padding: 18px 18px;
+  padding: 18px;
   border-bottom: 2px dashed #C8A060;
   cursor: pointer; background: #FFF8DC;
 }}
@@ -3741,6 +3745,7 @@ body {{
   display: flex; align-items: center; justify-content: center;
   z-index: 200;
   -webkit-tap-highlight-color: rgba(255,215,0,0.3);
+  touch-action: manipulation;
 }}
 #view-edit {{ display: none; }}
 .edit-date {{
@@ -3774,29 +3779,30 @@ body {{
   background: #8B1A1A; color: #FFD700;
   border: none; border-radius: 8px;
   cursor: pointer; box-shadow: 0 4px 0 #5C1010;
+  touch-action: manipulation;
 }}
 .btn-del {{
   flex: 1; padding: 20px;
   font-size: 18px; font-weight: bold;
   background: #F5E6A3; color: #6B4010;
   border: 2px solid #8B6914; border-radius: 8px;
-  cursor: pointer;
+  cursor: pointer; touch-action: manipulation;
 }}
 </style>
 </head>
 <body>
 
 <div class="app-header">
-  <button class="back-btn" id="back-btn" onclick="showList()">&#9664;</button>
-  <span id="header-title">&#128221; 覚え書き</span>
-  <button class="header-save" id="header-save" onclick="saveMemo()">保存</button>
+  <button class="back-btn" id="back-btn">&#9664;</button>
+  <span id="header-title">&#9998; &#35226;&#12360;&#26360;&#12365;</span>
+  <button class="header-save" id="header-save">&#20445;&#23559;</button>
 </div>
 
 <div id="view-list">
   <div id="memo-list"></div>
   <div class="migration-box">
-    <div class="migration-title">&#128230; 機種変更のときのデータお引越し</div>
-    <button class="migration-btn" onclick="doMigration()">お引越しの準備をする</button>
+    <div class="migration-title">&#128230; &#27231;&#31278;&#22793;&#26356;&#12398;&#12392;&#12365;&#12398;&#12487;&#12540;&#12479;&#12362;&#24341;&#36234;&#12375;</div>
+    <button class="migration-btn" id="btn-migration">&#12362;&#24341;&#36234;&#12375;&#12398;&#28310;&#20633;&#12434;&#12377;&#12427;</button>
   </div>
 </div>
 <button class="fab-new" id="fab-new">&#65291;</button>
@@ -3804,148 +3810,219 @@ body {{
 <div id="view-edit">
   <div class="edit-date" id="edit-date"></div>
   <div class="notebook-wrap">
-    <textarea class="notebook-textarea" id="memo-ta" placeholder="ここにメモを書いてください..."></textarea>
+    <textarea class="notebook-textarea" id="memo-ta" placeholder="&#12371;&#12371;&#12395;&#12513;&#12514;&#12434;&#26360;&#12356;&#12390;&#12367;&#12384;&#12373;&#12356;..."></textarea>
   </div>
   <div class="btn-row">
-    <button class="btn-save" onclick="saveMemo()">保存する</button>
-    <button class="btn-del" id="btn-del" style="display:none" onclick="deleteMemo()">消去</button>
+    <button class="btn-save" id="btn-save">&#20445;&#23559;&#12377;&#12427;</button>
+    <button class="btn-del" id="btn-del" style="display:none">&#28040;&#21435;</button>
   </div>
 </div>
 
 <script>
+// 1. vConsole 初期化（実機デバッグ用）
+var vc = new VConsole();
+console.log('[memo] page loaded');
+
 var LIFF_ID  = "{liff_memo_id}";
 var STOR_KEY = "kakioki_v1";
 var editId   = null;
+var liffReady = false;
 
-function getMemos(){{ try{{ return JSON.parse(localStorage.getItem(STOR_KEY)||"[]"); }}catch(e){{ return []; }} }}
-function setMemos(a){{ localStorage.setItem(STOR_KEY, JSON.stringify(a)); }}
-function genId(){{ return Date.now().toString(36)+Math.random().toString(36).slice(2,6); }}
+// --- データ操作 ---
+function getMemos(){{
+  try{{ return JSON.parse(localStorage.getItem(STOR_KEY) || "[]"); }}
+  catch(e){{ console.error('[memo] getMemos error', e); return []; }}
+}}
+function setMemos(arr){{
+  try{{ localStorage.setItem(STOR_KEY, JSON.stringify(arr)); }}
+  catch(e){{ console.error('[memo] setMemos error', e); alert('保存に失敗しました: ' + e.message); }}
+}}
+function genId(){{ return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }}
 function esc(s){{ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }}
 function fmtDate(ts){{
-  var d=new Date(ts);
-  var w=["日","月","火","水","木","金","土"][d.getDay()];
-  return d.getFullYear()+"年"+(d.getMonth()+1)+"月"+d.getDate()+"日（"+w+"）"
+  var d = new Date(ts);
+  var w = ["\u65e5","\u6708","\u706b","\u6c34","\u6728","\u91d1","\u571f"][d.getDay()];
+  return d.getFullYear()+"\u5e74"+(d.getMonth()+1)+"\u6708"+d.getDate()+"\u65e5\uff08"+w+"\uff09"
     +" "+d.getHours()+":"+(d.getMinutes()<10?"0":"")+d.getMinutes();
 }}
 
+// --- 画面表示 ---
 function renderList(){{
-  var ms=getMemos(), el=document.getElementById("memo-list");
+  console.log('[memo] renderList');
+  var ms = getMemos();
+  var el = document.getElementById("memo-list");
+  if(!el){{ console.error('[memo] memo-list not found'); return; }}
   if(!ms.length){{
-    el.innerHTML='<div class="empty-msg">まだメモがありません。<br>下の ＋ から書き始めましょう。</div>';
+    el.innerHTML = '<div class="empty-msg">\u307e\u3060\u30e1\u30e2\u304c\u3042\u308a\u307e\u305b\u3093\u3002<br>\u4e0b\u306e \uff0b \u304b\u3089\u66f8\u304d\u59cb\u3081\u307e\u3057\u3087\u3046\u3002</div>';
     return;
   }}
-  var h="";
+  var h = "";
   ms.forEach(function(m){{
-    var t=(m.content||"").replace(/\n/g," ").substring(0,24)||"（空のメモ）";
-    h+='<div class="memo-item" onclick="openMemo(\''+m.id+'\')">'
-      +'<div class="item-body">'
-      +'<div class="item-title">'+esc(t)+'</div>'
-      +'<div class="item-date">'+fmtDate(m.ts)+'</div>'
-      +'</div><span class="item-arrow">&#9654;</span></div>';
+    var t = (m.content||"").replace(/\n/g," ").substring(0,24) || "\uff08\u7a7a\u306e\u30e1\u30e2\uff09";
+    h += '<div class="memo-item" data-id="'+m.id+'">'
+       + '<div class="item-body">'
+       + '<div class="item-title">'+esc(t)+'</div>'
+       + '<div class="item-date">'+fmtDate(m.ts)+'</div>'
+       + '</div><span class="item-arrow">&#9654;</span></div>';
   }});
-  el.innerHTML=h;
+  el.innerHTML = h;
+  el.querySelectorAll('.memo-item').forEach(function(el){{
+    el.addEventListener('click', function(){{ openMemo(this.dataset.id); }});
+  }});
 }}
 
 function showList(){{
-  document.getElementById("view-list").style.display="block";
-  document.getElementById("view-edit").style.display="none";
-  document.getElementById("fab-new").style.display="flex";
-  document.getElementById("back-btn").style.display="none";
-  document.getElementById("header-save").style.display="none";
-  document.getElementById("header-title").textContent="\u270f\ufe0f \u899a\u3048\u66f8\u304d";
-  editId=null;
+  console.log('[memo] showList');
+  document.getElementById("view-list").style.display = "block";
+  document.getElementById("view-edit").style.display = "none";
+  document.getElementById("fab-new").style.display = "flex";
+  document.getElementById("back-btn").style.display = "none";
+  document.getElementById("header-save").style.display = "none";
+  document.getElementById("header-title").textContent = "\u9d5b \u899a\u3048\u66f8\u304d";
+  editId = null;
   renderList();
 }}
 
 function showEdit(title){{
-  document.getElementById("view-list").style.display="none";
-  document.getElementById("view-edit").style.display="block";
-  document.getElementById("fab-new").style.display="none";
-  document.getElementById("back-btn").style.display="block";
-  document.getElementById("header-save").style.display="block";
-  document.getElementById("header-title").textContent=title;
+  console.log('[memo] showEdit:', title);
+  document.getElementById("view-list").style.display = "none";
+  document.getElementById("view-edit").style.display = "block";
+  document.getElementById("fab-new").style.display = "none";
+  document.getElementById("back-btn").style.display = "block";
+  document.getElementById("header-save").style.display = "block";
+  document.getElementById("header-title").textContent = title;
 }}
 
 function newMemo(){{
-  editId=null;
-  document.getElementById("memo-ta").value="";
-  document.getElementById("btn-del").style.display="none";
-  document.getElementById("edit-date").textContent=fmtDate(Date.now())+" （新規）";
+  console.log('[memo] newMemo');
+  editId = null;
+  document.getElementById("memo-ta").value = "";
+  document.getElementById("btn-del").style.display = "none";
+  document.getElementById("edit-date").textContent = fmtDate(Date.now()) + " \uff08\u65b0\u898f\uff09";
   showEdit("\u65b0\u3057\u3044\u30e1\u30e2");
 }}
 
 function openMemo(id){{
-  var m=getMemos().find(function(x){{return x.id===id;}});
-  if(!m)return;
-  editId=id;
-  document.getElementById("memo-ta").value=m.content||"";
-  document.getElementById("btn-del").style.display="inline-block";
-  document.getElementById("edit-date").textContent=fmtDate(m.ts);
+  console.log('[memo] openMemo:', id);
+  var m = getMemos().find(function(x){{ return x.id === id; }});
+  if(!m){{ console.error('[memo] memo not found:', id); return; }}
+  editId = id;
+  document.getElementById("memo-ta").value = m.content || "";
+  document.getElementById("btn-del").style.display = "inline-block";
+  document.getElementById("edit-date").textContent = fmtDate(m.ts);
   showEdit("\u30e1\u30e2\u3092\u898b\u308b\u30fb\u76f4\u3059");
 }}
 
 function saveMemo(){{
-  var c=document.getElementById("memo-ta").value.trim();
+  console.log('[memo] saveMemo');
+  var c = document.getElementById("memo-ta").value.trim();
   if(!c){{ alert("\u4f55\u304b\u66f8\u3044\u3066\u304b\u3089\u4fdd\u5b58\u3057\u3066\u304f\u3060\u3055\u3044\u3002"); return; }}
-  var ms=getMemos();
+  var ms = getMemos();
   if(editId){{
-    ms=ms.map(function(m){{ return m.id===editId?{{id:m.id,content:c,ts:Date.now()}}:m; }});
-  }}else{{
-    ms.unshift({{id:genId(),content:c,ts:Date.now()}});
+    ms = ms.map(function(m){{ return m.id===editId ? {{id:m.id, content:c, ts:Date.now()}} : m; }});
+  }} else {{
+    ms.unshift({{id:genId(), content:c, ts:Date.now()}});
   }}
   setMemos(ms);
+  console.log('[memo] saved, total:', ms.length);
   showList();
 }}
 
 function deleteMemo(){{
-  if(!editId)return;
-  if(!confirm("\u3053\u306e\u30e1\u30e2\u3092\u6d88\u53bb\u3057\u307e\u3059\u304b\uff1f"))return;
-  setMemos(getMemos().filter(function(m){{return m.id!==editId;}}));
+  if(!editId) return;
+  if(!confirm("\u3053\u306e\u30e1\u30e2\u3092\u6d88\u53bb\u3057\u307e\u3059\u304b\uff1f")) return;
+  setMemos(getMemos().filter(function(m){{ return m.id !== editId; }}));
   showList();
 }}
 
+// --- 移行（バックアップ）---
 function b64enc(obj){{
-  var j=JSON.stringify(obj);
-  return btoa(encodeURIComponent(j).replace(/%([0-9A-F]{{2}})/g,function(_,p){{
+  var j = JSON.stringify(obj);
+  return btoa(encodeURIComponent(j).replace(/%([0-9A-F]{{2}})/g, function(_,p){{
     return String.fromCharCode(parseInt(p,16));
   }}));
 }}
 
 function doMigration(){{
-  var ms=getMemos();
+  var ms = getMemos();
   if(!ms.length){{ alert("\u307e\u3060\u30e1\u30e2\u304c\u3042\u308a\u307e\u305b\u3093\u3002"); return; }}
-  var enc=encodeURIComponent(b64enc(ms));
-  var url="https://liff.line.me/"+LIFF_ID+"?data="+enc;
-  var msg="\ud83d\udcdd \u899a\u3048\u66f8\u304d\u306e\u304a\u5f15\u8d8a\u3057\u7528\u30ea\u30f3\u30af\u3067\u3059\u3002\n\u65b0\u3057\u3044\u30b9\u30de\u30db\u3067\u3053\u306e\u30ea\u30f3\u30af\u3092\u30bf\u30c3\u30d7\u3059\u308b\u3068\u30e1\u30e2\u304c\u623b\u308a\u307e\u3059\u3002\n\n"+url;
+  var enc = encodeURIComponent(b64enc(ms));
+  var url = "https://liff.line.me/" + LIFF_ID + "?data=" + enc;
+  var msg = "\u899a\u3048\u66f8\u304d\u306e\u304a\u5f15\u8d8a\u3057\u7528\u30ea\u30f3\u30af\u3067\u3059\u3002\n\u65b0\u3057\u3044\u30b9\u30de\u30db\u3067\u3053\u306e\u30ea\u30f3\u30af\u3092\u30bf\u30c3\u30d7\u3059\u308b\u3068\u30e1\u30e2\u304c\u623b\u308a\u307e\u3059\u3002\n\n" + url;
+  if(liffReady && liff.isInClient()){{
+    liff.sendMessages([{{type:"text", text:msg}}])
+      .then(function(){{ alert("\u304a\u5f15\u8d8a\u3057\u7528\u30e1\u30c3\u30bb\u30fc\u30b8\u3092\u30c8\u30fc\u30af\u306b\u9001\u308a\u307e\u3057\u305f\uff01"); }})
+      .catch(function(e){{ console.error('[memo] sendMessages error', e); copyOrPrompt(msg, url); }});
+  }} else {{
+    copyOrPrompt(msg, url);
+  }}
+}}
+function copyOrPrompt(msg, url){{
   if(navigator.clipboard){{
-    navigator.clipboard.writeText(msg).then(function(){{
-      alert("\u304a\u5f15\u8d8a\u3057\u7528\u30ea\u30f3\u30af\u3092\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f\u3002\nLINE\u306e\u30c8\u30fc\u30af\u306b\u8cbc\u308a\u4ed8\u3051\u3066\u81ea\u5206\u306b\u9001\u3063\u3066\u304f\u3060\u3055\u3044\u3002");
-    }}).catch(function(){{ showMigrationUrl(url); }});
-  }}else{{ showMigrationUrl(url); }}
-}}
-function showMigrationUrl(url){{
-  prompt("\u4e0b\u8a18\u306eURL\u3092\u30b3\u30d4\u30fc\u3057\u3066LINE\u306b\u9001\u3063\u3066\u304f\u3060\u3055\u3044\u3002", url);
+    navigator.clipboard.writeText(msg)
+      .then(function(){{ alert("\u30ea\u30f3\u30af\u3092\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f\u3002LINE\u306b\u8cbc\u308a\u4ed8\u3051\u3066\u9001\u3063\u3066\u304f\u3060\u3055\u3044\u3002"); }})
+      .catch(function(){{ prompt("URL\u3092\u30b3\u30d4\u30fc\u3057\u3066LINE\u306b\u9001\u3063\u3066\u304f\u3060\u3055\u3044\u3002", url); }});
+  }} else {{
+    prompt("URL\u3092\u30b3\u30d4\u30fc\u3057\u3066LINE\u306b\u9001\u3063\u3066\u304f\u3060\u3055\u3044\u3002", url);
+  }}
 }}
 
-// URLにdataパラメータがあれば復元確認
-(function(){{
-  var dp=new URLSearchParams(location.search).get('data');
-  if(!dp)return;
+// --- URL復元チェック ---
+function tryRestore(){{
+  var dp = new URLSearchParams(location.search).get('data');
+  if(!dp) return;
   try{{
-    var dec=JSON.parse(decodeURIComponent(Array.prototype.map.call(atob(dp),function(c){{
-      return '%'+('00'+c.charCodeAt(0).toString(16)).slice(-2);
-    }}).join('')));
-    if(confirm(dec.length+"\u4ef6\u306e\u30e1\u30e2\u304c\u898b\u3064\u304b\u308a\u307e\u3057\u305f\u3002\n\u3053\u306e\u7aef\u672b\u306b\u5fa9\u5143\u3057\u307e\u3059\u304b\uff1f")){{
+    var dec = JSON.parse(decodeURIComponent(
+      Array.prototype.map.call(atob(dp), function(c){{
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      }}).join('')
+    ));
+    if(confirm(dec.length + "\u4ef6\u306e\u30e1\u30e2\u304c\u898b\u3064\u304b\u308a\u307e\u3057\u305f\u3002\u3053\u306e\u7aef\u672b\u306b\u5fa9\u5143\u3057\u307e\u3059\u304b\uff1f")){{
       setMemos(dec);
-      alert("\u5fa9\u5143\u3057\u307e\u3057\u305f\uff01\uff08"+dec.length+"\u4ef6\uff09");
+      alert("\u5fa9\u5143\u3057\u307e\u3057\u305f\uff01\uff08" + dec.length + "\u4ef6\uff09");
+      renderList();
     }}
-  }}catch(e){{ console.log("restore error",e); }}
-}})();
+  }} catch(e){{ console.log('[memo] restore error', e); }}
+}}
 
-// ＋ボタンのイベント（addEventListener で確実に登録）
-document.getElementById("fab-new").addEventListener("click", function(){{ newMemo(); }});
+// 4. DOMContentLoaded: HTML読み込み後にJSを実行
+document.addEventListener('DOMContentLoaded', function(){{
+  console.log('[memo] DOMContentLoaded');
 
-renderList();
+  // 3. ボタンの紐付け（id と addEventListener で確実に登録）
+  document.getElementById('fab-new').addEventListener('click', function(){{ newMemo(); }});
+  document.getElementById('btn-save').addEventListener('click', function(){{ saveMemo(); }});
+  document.getElementById('btn-del').addEventListener('click', function(){{ deleteMemo(); }});
+  document.getElementById('back-btn').addEventListener('click', function(){{ showList(); }});
+  document.getElementById('header-save').addEventListener('click', function(){{ saveMemo(); }});
+  document.getElementById('btn-migration').addEventListener('click', function(){{ doMigration(); }});
+  console.log('[memo] event listeners registered');
+
+  // まずリスト表示（LIFF初期化を待たない）
+  renderList();
+  tryRestore();
+
+  // 2. LIFF初期化（バックグラウンドで実行・LINEログイン状態の取得のみ）
+  if(typeof liff !== 'undefined'){{
+    liff.init({{ liffId: LIFF_ID }})
+      .then(function(){{
+        liffReady = true;
+        console.log('[memo] liff.init OK');
+        // 5. ログイン状態の確認
+        if(liff.isLoggedIn()){{
+          console.log('[memo] logged in, userID:', liff.getContext() && liff.getContext().userId);
+        }} else {{
+          console.log('[memo] not logged in');
+        }}
+      }})
+      .catch(function(err){{
+        console.error('[memo] liff.init error:', err.message || err);
+        // LIFFエラーでも本体機能は使えるのでalertしない
+      }});
+  }} else {{
+    console.warn('[memo] liff SDK not loaded');
+  }}
+}});
 </script>
 </body>
 </html>
