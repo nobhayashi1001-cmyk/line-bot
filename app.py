@@ -3484,7 +3484,7 @@ function showList(){{
   document.getElementById("view-list").style.display="block";
   document.getElementById("view-edit").style.display="none";
   document.getElementById("hd-back").style.display="none";
-  document.getElementById("hd-title").textContent="\uD83D\uDCD3 メモ帳";
+  document.getElementById("hd-title").textContent="📓 メモ帳";
   editingId=null;
   renderList();
 }}
