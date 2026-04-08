@@ -3120,22 +3120,23 @@ _LIFF_SCHEDULE_HTML = """\
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
 :root {{
-  --paper:  #FDF5E6;
-  --ink:    #333333;
-  --red:    #E74C3C;
-  --sunday: #C0392B;
-  --green:  #27AE60;
-  --blue:   #2471A3;
-  --brown:  #8B4513;
-  --line:   #C8A87A;
-  --card:   #FFFBF0;
-  --dim:    #AAA;
-  --today-bg: #FFF3CD;
+  --bg:      #F5E6A3;
+  --text:     #4A2C0A;
+  --sunday:  #C0392B;
+  --btn-bg:  #8B1A1A;
+  --btn-text:#FFD700;
+  --green:   #27AE60;
+  --sub:     #6B4010;
+  --line:    #C8A060;
+  --card:    #FFF8DC;
+  --border:  #8B6914;
+  --dim:     #AAA;
+  --today-bg:#FFF8DC;
 }}
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--bg);
+  color: var(--text);
   font-family: 'Hiragino Mincho ProN','Yu Mincho','Noto Serif JP',serif;
   font-size: 18px;
   min-height: 100vh;
@@ -3143,14 +3144,14 @@ body {{
 }}
 /* ヘッダー */
 .app-header {{
-  background: #8B0000;
-  color: #FDF5E6;
+  background: #8B1A1A;
+  color: #FFD700;
   padding: 14px 50px;
   text-align: center;
   font-size: 22px;
   font-weight: bold;
   letter-spacing: 0.1em;
-  border-bottom: 4px solid #5C0000;
+  border-bottom: 4px solid #5C1010;
   position: sticky;
   top: 0;
   z-index: 100;
@@ -3162,7 +3163,7 @@ body {{
   transform: translateY(-50%);
   background: none;
   border: none;
-  color: #FDF5E6;
+  color: #FFD700;
   font-size: 26px;
   cursor: pointer;
   display: none;
@@ -3180,20 +3181,20 @@ body {{
 }}
 .today-label {{
   font-size: 14px;
-  color: var(--brown);
+  color: var(--sub);
   font-weight: bold;
   margin-bottom: 6px;
 }}
 .today-date {{
   font-size: 22px;
   font-weight: bold;
-  color: var(--ink);
+  color: var(--text);
   margin-bottom: 10px;
 }}
 .today-msg {{
   font-size: 18px;
   line-height: 1.8;
-  color: var(--ink);
+  color: var(--text);
 }}
 .today-event {{
   display: flex;
@@ -3209,9 +3210,9 @@ body {{
   padding: 10px 16px 6px;
   font-size: 14px;
   font-weight: bold;
-  color: var(--brown);
+  color: var(--sub);
   border-bottom: 2px solid var(--line);
-  background: var(--paper);
+  background: var(--bg);
   letter-spacing: 0.1em;
 }}
 .empty-future {{
@@ -3225,20 +3226,20 @@ body {{
 .event-item {{
   padding: 14px 16px;
   border-bottom: 1px dashed var(--line);
-  background: var(--card);
+  background: var(--card-bg);
   display: flex;
   align-items: flex-start;
   gap: 12px;
 }}
 .event-item.past {{
-  background: var(--paper);
+  background: var(--bg);
   opacity: 0.6;
 }}
 .event-left {{ flex: 1; min-width: 0; }}
 .event-date {{
   font-size: 24px;
   font-weight: bold;
-  color: var(--ink);
+  color: var(--text);
   line-height: 1.2;
 }}
 .event-date.sun {{ color: var(--sunday); }}
@@ -3253,17 +3254,17 @@ body {{
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: #ECF0F1;
-  color: #999;
+  background: var(--card-bg);
+  color: var(--sub);
   font-size: 20px;
-  border: 2px solid #BDC3C7;
+  border: 2px solid var(--border);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   margin-top: 4px;
 }}
-.del-btn:active {{ background: #E74C3C; color: #fff; border-color: #E74C3C; }}
+.del-btn:active {{ background: var(--btn-bg); color: var(--btn-text); border-color: var(--btn-bg); }}
 /* 過去の予定のトグル */
 .past-toggle {{
   text-align: center;
@@ -3285,12 +3286,12 @@ body {{
   padding: 20px;
   font-size: 20px;
   font-weight: bold;
-  background: var(--green);
-  color: #fff;
+  background: var(--btn-bg);
+  color: var(--btn-text);
   border: none;
   border-radius: 10px;
   cursor: pointer;
-  box-shadow: 0 4px 0 #1E8449;
+  box-shadow: 0 4px 0 #5C1010;
   letter-spacing: 0.05em;
 }}
 .btn-add:active {{ transform: translateY(3px); box-shadow: none; }}
@@ -3299,12 +3300,12 @@ body {{
   padding: 16px;
   font-size: 17px;
   font-weight: bold;
-  background: var(--blue);
-  color: #fff;
+  background: var(--btn-bg);
+  color: var(--btn-text);
   border: none;
   border-radius: 10px;
   cursor: pointer;
-  box-shadow: 0 4px 0 #1A5276;
+  box-shadow: 0 4px 0 #5C1010;
   letter-spacing: 0.05em;
 }}
 .btn-migrate:active {{ transform: translateY(3px); box-shadow: none; }}
@@ -3313,7 +3314,7 @@ body {{
 .field-label {{
   font-size: 16px;
   font-weight: bold;
-  color: var(--brown);
+  color: var(--sub);
   margin-bottom: 8px;
   margin-top: 20px;
 }}
@@ -3324,8 +3325,8 @@ body {{
   font-size: 22px;
   border: 2px solid var(--line);
   border-radius: 8px;
-  background: var(--card);
-  color: var(--ink);
+  background: var(--card-bg);
+  color: var(--text);
   font-family: inherit;
 }}
 .content-input {{
@@ -3334,14 +3335,14 @@ body {{
   font-size: 20px;
   border: 2px solid var(--line);
   border-radius: 8px;
-  background: var(--card);
-  color: var(--ink);
+  background: var(--card-bg);
+  color: var(--text);
   font-family: inherit;
   min-height: 120px;
   resize: vertical;
   line-height: 1.6;
 }}
-.date-input:focus, .content-input:focus {{ outline: none; border-color: var(--brown); }}
+.date-input:focus, .content-input:focus {{ outline: none; border-color: var(--sub); }}
 .btn-save {{
   display: block;
   width: 100%;
@@ -3349,12 +3350,12 @@ body {{
   padding: 20px;
   font-size: 22px;
   font-weight: bold;
-  background: var(--red);
-  color: #fff;
+  background: var(--btn-bg);
+  color: var(--btn-text);
   border: none;
   border-radius: 10px;
   cursor: pointer;
-  box-shadow: 0 4px 0 #922B21;
+  box-shadow: 0 4px 0 #5C1010;
   letter-spacing: 0.05em;
 }}
 .btn-save:active {{ transform: translateY(3px); box-shadow: none; }}
@@ -3653,19 +3654,20 @@ _LIFF_MEMO_HTML = """\
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
 :root {{
-  --cream:  #FFF9E5;
-  --red:    #C0392B;
+  --bg:     #F5E6A3;
+  --btn-bg: #8B1A1A;
+  --btn-text:#FFD700;
   --green:  #27AE60;
-  --blue:   #2471A3;
-  --text:   #2C1810;
-  --ruled:  #B8D4F0;
-  --card:   #FFFDF0;
-  --border: #C8A060;
+  --text:   #4A2C0A;
+  --sub:    #6B4010;
+  --ruled:  #C8A060;
+  --card:   #FFF8DC;
+  --border: #8B6914;
   --shadow: rgba(0,0,0,0.12);
 }}
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{
-  background: var(--cream);
+  background: var(--bg);
   color: var(--text);
   font-family: 'Hiragino Mincho ProN','Yu Mincho','Noto Serif JP',serif;
   font-size: 18px;
@@ -3673,14 +3675,14 @@ body {{
   padding-bottom: 100px;
 }}
 .app-header {{
-  background: #8B0000;
-  color: #FFF9E5;
+  background: #8B1A1A;
+  color: #FFD700;
   padding: 14px 50px;
   text-align: center;
   font-size: 22px;
   font-weight: bold;
   letter-spacing: 0.1em;
-  border-bottom: 4px solid #5C0000;
+  border-bottom: 4px solid #5C1010;
   position: sticky;
   top: 0;
   z-index: 100;
@@ -3692,7 +3694,7 @@ body {{
   transform: translateY(-50%);
   background: none;
   border: none;
-  color: #FFF9E5;
+  color: #FFD700;
   font-size: 26px;
   cursor: pointer;
   display: none;
@@ -3707,9 +3709,9 @@ body {{
   padding: 16px 18px;
   border-bottom: 2px dashed var(--ruled);
   cursor: pointer;
-  background: var(--card);
+  background: var(--card-bg);
 }}
-.memo-item:active {{ background: #F0EDD5; }}
+.memo-item:active {{ background: var(--bg); }}
 .item-body {{ flex: 1; min-width: 0; }}
 .item-title {{
   font-size: 18px;
@@ -3731,14 +3733,14 @@ body {{
 .migration-box {{
   margin: 20px 16px 16px;
   padding: 16px;
-  background: var(--card);
+  background: var(--card-bg);
   border: 2px solid var(--border);
   border-radius: 8px;
   box-shadow: 2px 3px 0 var(--border);
 }}
 .migration-title {{
   font-size: 15px;
-  color: #777;
+  color: var(--sub);
   margin-bottom: 12px;
   text-align: center;
   font-weight: bold;
@@ -3749,12 +3751,12 @@ body {{
   padding: 18px;
   font-size: 18px;
   font-weight: bold;
-  background: var(--blue);
-  color: #fff;
+  background: var(--btn-bg);
+  color: var(--btn-text);
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  box-shadow: 0 4px 0 #1A5276;
+  box-shadow: 0 4px 0 #5C1010;
   letter-spacing: 0.05em;
 }}
 .migration-btn:active {{ transform: translateY(3px); box-shadow: none; }}
@@ -3766,8 +3768,8 @@ body {{
   width: 66px;
   height: 66px;
   border-radius: 50%;
-  background: var(--green);
-  color: #fff;
+  background: var(--btn-bg);
+  color: var(--btn-text);
   font-size: 38px;
   border: none;
   cursor: pointer;
@@ -3783,12 +3785,12 @@ body {{
   padding: 10px 16px;
   font-size: 14px;
   color: #999;
-  background: var(--card);
+  background: var(--card-bg);
   border-bottom: 1px solid var(--ruled);
 }}
 .notebook-wrap {{
   padding: 8px 16px 0;
-  background: var(--cream);
+  background: var(--bg);
 }}
 .notebook-textarea {{
   width: 100%;
@@ -3801,21 +3803,20 @@ body {{
   resize: none;
   background:
     repeating-linear-gradient(
-      transparent,
-      transparent calc(2em - 1px),
+      var(--bg),
+      var(--bg) calc(2em - 1px),
       var(--ruled) calc(2em - 1px),
       var(--ruled) 2em
     );
   font-family: inherit;
   color: var(--text);
   word-break: break-all;
-  background-color: var(--cream);
 }}
 .btn-row {{
   display: flex;
   gap: 12px;
   padding: 14px 16px;
-  background: var(--cream);
+  background: var(--bg);
   border-top: 2px solid var(--ruled);
   position: sticky;
   bottom: 0;
@@ -3825,12 +3826,12 @@ body {{
   padding: 18px;
   font-size: 20px;
   font-weight: bold;
-  background: var(--red);
-  color: #fff;
+  background: var(--btn-bg);
+  color: var(--btn-text);
   border: none;
   border-radius: 8px;
   cursor: pointer;
-  box-shadow: 0 4px 0 #922B21;
+  box-shadow: 0 4px 0 #5C1010;
   letter-spacing: 0.05em;
 }}
 .btn-save:active {{ transform: translateY(3px); box-shadow: none; }}
@@ -3839,9 +3840,9 @@ body {{
   padding: 18px;
   font-size: 18px;
   font-weight: bold;
-  background: #ECF0F1;
-  color: #7F8C8D;
-  border: 2px solid #BDC3C7;
+  background: var(--bg);
+  color: var(--sub);
+  border: 2px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
 }}
