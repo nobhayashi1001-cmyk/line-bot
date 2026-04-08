@@ -3686,6 +3686,22 @@ body {{
   position: sticky;
   top: 0;
   z-index: 100;
+  position: relative;
+}}
+.header-save {{
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #FFD700;
+  color: #8B1A1A;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: bold;
+  padding: 8px 14px;
+  cursor: pointer;
+  display: none;
 }}
 .back-btn {{
   position: absolute;
@@ -3794,7 +3810,7 @@ body {{
 }}
 .notebook-textarea {{
   width: 100%;
-  min-height: 56vh;
+  min-height: 40vh;
   font-size: 20px;
   line-height: 2em;
   padding: 0.2em 6px;
@@ -3815,11 +3831,9 @@ body {{
 .btn-row {{
   display: flex;
   gap: 12px;
-  padding: 14px 16px;
+  padding: 12px 16px;
   background: var(--bg);
   border-top: 2px solid var(--ruled);
-  position: sticky;
-  bottom: 0;
 }}
 .btn-save {{
   flex: 2;
@@ -3854,6 +3868,7 @@ body {{
 <div class="app-header">
   <button class="back-btn" id="back-btn" onclick="showList()">&#9664;</button>
   <span id="header-title">&#128221; 覚え書き</span>
+  <button class="header-save" id="header-save" onclick="saveMemo()">保存</button>
 </div>
 
 <div id="view-list">
@@ -3948,6 +3963,7 @@ function showList(){{
   document.getElementById("view-list").style.display="block";
   document.getElementById("view-edit").style.display="none";
   document.getElementById("back-btn").style.display="none";
+  document.getElementById("header-save").style.display="none";
   document.getElementById("header-title").textContent="📝 覚え書き";
   editId=null;
   renderList();
@@ -3956,6 +3972,7 @@ function showEdit(title){{
   document.getElementById("view-list").style.display="none";
   document.getElementById("view-edit").style.display="block";
   document.getElementById("back-btn").style.display="block";
+  document.getElementById("header-save").style.display="block";
   document.getElementById("header-title").textContent=title;
 }}
 
