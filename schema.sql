@@ -33,6 +33,24 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS schedules (
+    id           BIGSERIAL PRIMARY KEY,
+    line_user_id TEXT NOT NULL,
+    date         DATE NOT NULL,
+    content      TEXT NOT NULL,
+    created_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS schedules_user_date ON schedules (line_user_id, date);
+
+CREATE TABLE IF NOT EXISTS memos (
+    id           BIGSERIAL PRIMARY KEY,
+    line_user_id TEXT NOT NULL,
+    content      TEXT NOT NULL,
+    created_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS memos_user ON memos (line_user_id);
+
 CREATE TABLE IF NOT EXISTS restaurants (
     id           BIGSERIAL PRIMARY KEY,
     place_id     TEXT UNIQUE NOT NULL,

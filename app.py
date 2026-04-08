@@ -3120,41 +3120,38 @@ _LIFF_SCHEDULE_HTML = """\
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
 {retro_css}
-body{{padding-bottom:60px}}
-.cal-nav{{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:2px solid var(--border);background:var(--card-bg)}}
-.cal-nav button{{font-size:26px;border:none;background:none;color:var(--header-bg);cursor:pointer;padding:4px 12px;line-height:1}}
+body{{padding-bottom:80px}}
+.cal-nav{{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:var(--card-bg);border-bottom:2px solid var(--border)}}
+.cal-nav button{{font-size:24px;border:none;background:none;color:var(--header-bg);cursor:pointer;padding:4px 12px}}
 .month-label{{font-size:20px;font-weight:bold;color:var(--text)}}
-table.cal{{width:100%;border-collapse:collapse;table-layout:fixed;background:var(--bg)}}
-table.cal th{{text-align:center;padding:10px 0 8px;font-size:13px;font-weight:bold;border-bottom:2px solid var(--border);color:var(--sub-text)}}
+table.cal{{width:100%;border-collapse:collapse;table-layout:fixed}}
+table.cal th{{text-align:center;padding:8px 0;font-size:13px;color:var(--sub-text);border-bottom:2px solid var(--border)}}
 table.cal th.sun{{color:var(--header-bg)}}
-table.cal th.sat{{color:var(--sub-text)}}
-table.cal td{{text-align:center;padding:6px 2px;vertical-align:top;height:58px;cursor:pointer;border-bottom:1px dashed var(--divider)}}
-table.cal td:hover{{background:var(--card-bg)}}
-table.cal td.sel{{background:var(--card-bg);outline:2px solid var(--border)}}
-.dn{{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;font-size:20px;border-radius:50%;font-weight:500;color:var(--text)}}
+table.cal td{{text-align:center;padding:4px 2px;height:52px;cursor:pointer;border-bottom:1px dashed var(--divider);vertical-align:top}}
+table.cal td:active{{background:var(--card-bg)}}
+.dn{{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;font-size:19px;border-radius:50%;color:var(--text)}}
 .dn.today{{background:var(--header-bg);color:var(--header-text);font-weight:bold}}
 .dn.sun{{color:var(--header-bg)}}
 .dn.sat{{color:var(--sub-text)}}
-.dn.out{{color:#CCC;font-size:16px}}
-.dot{{display:block;width:7px;height:7px;background:var(--header-bg);border-radius:50%;margin:2px auto 0}}
-.memo-area{{padding:16px;border-top:3px solid var(--border);display:none;background:var(--bg)}}
-.memo-date{{font-size:20px;font-weight:bold;color:var(--header-bg);margin-bottom:14px}}
-.saved-item{{background:var(--card-bg);border:2px solid var(--border);border-radius:8px;padding:12px 48px 12px 12px;margin-bottom:10px;position:relative;box-shadow:2px 2px 0 var(--border)}}
-.saved-content{{font-size:16px;line-height:1.65;white-space:pre-wrap;word-break:break-all;color:var(--text)}}
-.saved-time{{font-size:12px;color:var(--sub-text);margin-top:6px}}
-.del-btn{{position:absolute;top:10px;right:10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--sub-text);font-size:13px;padding:4px 8px;cursor:pointer}}
-.empty-note{{color:var(--sub-text);font-size:16px;text-align:center;padding:14px 0}}
-.input-row{{display:flex;gap:10px;align-items:flex-start;margin-bottom:14px}}
-.memo-input{{flex:1;font-size:18px;border:2px solid var(--border);border-radius:8px;padding:10px;min-height:100px;resize:vertical;line-height:1.6;font-family:inherit;background:#fffff0;color:var(--text)}}
-.memo-input:focus{{outline:none;border-color:var(--header-bg)}}
-.mic-btn{{padding:12px;font-size:22px;background:var(--card-bg);border:2px solid var(--border);border-radius:8px;cursor:pointer;flex-shrink:0;line-height:1}}
-.mic-btn.rec{{border-color:var(--header-bg);background:var(--bg)}}
-.save-btn{{display:block;width:100%;padding:14px;font-size:18px;font-weight:bold;background:var(--btn-bg);color:var(--btn-text);border:none;border-radius:8px;cursor:pointer;box-shadow:2px 3px 0 #5C1010}}
-.save-btn:active{{transform:translateY(2px);box-shadow:none}}
+.dot{{display:block;width:6px;height:6px;background:var(--header-bg);border-radius:50%;margin:1px auto 0}}
+.day-panel{{display:none;padding:16px;background:var(--bg);border-top:3px solid var(--border)}}
+.day-title{{font-size:19px;font-weight:bold;color:var(--header-bg);margin-bottom:12px}}
+.note-item{{display:flex;align-items:center;background:var(--card-bg);border:2px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;box-shadow:2px 2px 0 var(--border)}}
+.note-text{{flex:1;font-size:16px;line-height:1.5;white-space:pre-wrap;word-break:break-all}}
+.note-del{{background:none;border:1px solid var(--border);border-radius:6px;color:var(--sub-text);font-size:13px;padding:4px 8px;cursor:pointer;flex-shrink:0;margin-left:8px}}
+.no-note{{color:var(--sub-text);font-size:16px;text-align:center;padding:12px 0}}
+.add-row{{display:flex;gap:8px;margin-top:12px}}
+.add-input{{flex:1;font-size:16px;border:2px solid var(--border);border-radius:8px;padding:8px;background:#fffff0;color:var(--text);font-family:inherit}}
+.add-btn{{padding:8px 14px;font-size:15px;font-weight:bold;background:var(--btn-bg);color:var(--btn-text);border:none;border-radius:8px;cursor:pointer;white-space:nowrap}}
+.backup-section{{margin:16px;padding:14px;background:var(--card-bg);border:2px solid var(--border);border-radius:10px;box-shadow:2px 3px 0 var(--border)}}
+.backup-title{{font-size:14px;font-weight:bold;color:var(--sub-text);margin-bottom:8px}}
+.backup-btn{{display:block;width:100%;padding:12px;font-size:16px;font-weight:bold;background:var(--btn-bg);color:var(--btn-text);border:none;border-radius:8px;cursor:pointer;margin-bottom:10px}}
+.restore-ta{{width:100%;font-size:13px;border:2px solid var(--border);border-radius:8px;padding:8px;min-height:80px;margin-bottom:8px;background:#fffff0;color:var(--text);font-family:inherit}}
+.restore-btn{{display:block;width:100%;padding:10px;font-size:14px;background:var(--bg);color:var(--text);border:2px solid var(--border);border-radius:8px;cursor:pointer}}
 </style>
 </head>
 <body>
-<div class="retro-header"><h1>📅 スケジュール</h1></div>
+<div class="retro-header"><h1>&#128197; スケジュール</h1></div>
 <div class="cal-nav">
   <button onclick="changeMonth(-1)">&#9664;</button>
   <span class="month-label" id="month-label"></span>
@@ -3162,25 +3159,30 @@ table.cal td.sel{{background:var(--card-bg);outline:2px solid var(--border)}}
 </div>
 <table class="cal">
   <thead><tr>
-    <th class="sun">SUN</th><th>MON</th><th>TUE</th>
-    <th>WED</th><th>THU</th><th>FRI</th><th class="sat">SAT</th>
+    <th class="sun">日</th><th>月</th><th>火</th>
+    <th>水</th><th>木</th><th>金</th><th>土</th>
   </tr></thead>
   <tbody id="cal-body"></tbody>
 </table>
-<div class="memo-area" id="memo-area">
-  <div class="memo-date" id="memo-date"></div>
-  <div id="saved-list"></div>
-  <div class="input-row">
-    <textarea class="memo-input" id="memo-input" placeholder="メモを入力してください..."></textarea>
-    <button class="mic-btn" id="mic-btn" onclick="toggleVoice()">&#127908;</button>
+<div class="day-panel" id="day-panel">
+  <div class="day-title" id="day-title"></div>
+  <div id="note-list"></div>
+  <div class="add-row">
+    <input class="add-input" id="add-input" type="text" placeholder="予定を入力...">
+    <button class="add-btn" onclick="addNote()">追加</button>
   </div>
-  <button class="save-btn" onclick="saveSchedule()">保存する</button>
 </div>
-
+<div class="backup-section">
+  <div class="backup-title">&#128230; 機種変更・バックアップ</div>
+  <button class="backup-btn" onclick="doBackup()">LINEにバックアップを送る</button>
+  <div class="backup-title" style="margin-top:10px">復元（バックアップのテキストを貼り付け）</div>
+  <textarea class="restore-ta" id="restore-ta" placeholder="バックアップテキストをここに貼り付け..."></textarea>
+  <button class="restore-btn" onclick="doRestore()">復元する</button>
+</div>
 <script>
 var LIFF_ID = "{liff_schedule_id}";
-var lineUserId = "";
-var curYear, curMonth, selDate = "", monthData = {{}}, recognition = null, isRec = false;
+var STORE_KEY = "liff_schedule_v1";
+var curYear, curMonth, selDate = "";
 
 (function(){{
   var t = new Date();
@@ -3188,160 +3190,137 @@ var curYear, curMonth, selDate = "", monthData = {{}}, recognition = null, isRec
   curMonth = t.getMonth();
 }})();
 
-liff.init({{liffId: LIFF_ID}}).then(function(){{
-  if (liff.isLoggedIn()) {{
-    liff.getProfile().then(function(p){{
-      lineUserId = p.userId;
-      loadMonth();
-    }});
-  }} else {{ liff.login(); }}
-}}).catch(function(){{
-  lineUserId = new URLSearchParams(location.search).get("line_user_id") || "";
-  loadMonth();
-}});
-
-var WDAYS = ["日","月","火","水","木","金","土"];
-
-function pad(n){{ return n < 10 ? "0"+n : ""+n; }}
+function getData(){{
+  try{{ return JSON.parse(localStorage.getItem(STORE_KEY)||"{{}}"); }}catch(e){{ return {{}}; }}
+}}
+function setData(obj){{ localStorage.setItem(STORE_KEY, JSON.stringify(obj)); }}
+function pad(n){{ return n<10?"0"+n:""+n; }}
 function ds(y,m,d){{ return y+"-"+pad(m+1)+"-"+pad(d); }}
 
-function loadMonth(){{
-  document.getElementById("month-label").textContent = curYear+"年"+(curMonth+1)+"月";
-  if (!lineUserId){{ renderCal(); return; }}
-  fetch("/liff/api/schedule?line_user_id="+encodeURIComponent(lineUserId)
-      +"&year="+curYear+"&month="+(curMonth+1))
-    .then(function(r){{return r.json();}})
-    .then(function(d){{
-      monthData = {{}};
-      (d.schedules||[]).forEach(function(s){{
-        if (!monthData[s.date]) monthData[s.date]=[];
-        monthData[s.date].push(s);
-      }});
-      renderCal();
-      if (selDate) renderSaved();
-    }}).catch(function(){{renderCal();}});
+function changeMonth(delta){{
+  curMonth += delta;
+  if(curMonth<0){{ curMonth=11; curYear--; }}
+  if(curMonth>11){{ curMonth=0; curYear++; }}
+  document.getElementById("day-panel").style.display="none";
+  selDate="";
+  renderCal();
 }}
 
 function renderCal(){{
-  var today = new Date();
-  var todayDs = ds(today.getFullYear(), today.getMonth(), today.getDate());
-  var firstDow = new Date(curYear, curMonth, 1).getDay();
-  var lastDay  = new Date(curYear, curMonth+1, 0).getDate();
-  var html = ""; var day = 1 - firstDow;
-  for (var r=0; r<6; r++){{
-    var row = "<tr>"; var hasContent = false;
-    for (var c=0; c<7; c++, day++){{
-      if (day < 1 || day > lastDay){{
-        row += "<td></td>";
-      }} else {{
-        hasContent = true;
-        var d = ds(curYear, curMonth, day);
-        var dnCls = "dn"+(d===todayDs?" today":"")+(c===0?" sun":"")+(c===6?" sat":"");
-        var dot = (monthData[d]&&monthData[d].length) ? '<span class="dot"></span>' : "";
-        row += '<td class="'+(d===selDate?"sel":"")+'" onclick="selDay(\''+d+'\','+day+','+c+')">'
-             + '<span class="'+dnCls+'">'+day+'</span>'+dot+'</td>';
+  document.getElementById("month-label").textContent=curYear+"年"+(curMonth+1)+"月";
+  var data=getData();
+  var today=new Date();
+  var todayDs=ds(today.getFullYear(),today.getMonth(),today.getDate());
+  var firstDow=new Date(curYear,curMonth,1).getDay();
+  var lastDay=new Date(curYear,curMonth+1,0).getDate();
+  var html=""; var day=1-firstDow;
+  for(var r=0;r<6;r++){{
+    var row="<tr>"; var any=false;
+    for(var c=0;c<7;c++,day++){{
+      if(day<1||day>lastDay){{ row+="<td></td>"; }}
+      else{{
+        any=true;
+        var d2=ds(curYear,curMonth,day);
+        var cls="dn"+(d2===todayDs?" today":"")+(c===0?" sun":"")+(c===6?" sat":"");
+        var dot=(data[d2]&&data[d2].length)?'<span class="dot"></span>':"";
+        var sel=d2===selDate?' style="background:var(--card-bg);outline:2px solid var(--border)"':"";
+        row+='<td'+sel+' onclick="selectDate(\''+d2+'\')"><span class="'+cls+'">'+day+"</span>"+dot+"</td>";
       }}
     }}
-    row += "</tr>";
-    if (hasContent) html += row;
+    row+="</tr>";
+    if(!any&&r>3)break;
+    html+=row;
   }}
-  document.getElementById("cal-body").innerHTML = html;
+  document.getElementById("cal-body").innerHTML=html;
 }}
 
-function selDay(d, day, col){{
-  selDate = d;
-  var dt = new Date(parseInt(d.split("-")[0]), parseInt(d.split("-")[1])-1, parseInt(d.split("-")[2]));
-  document.getElementById("memo-date").textContent =
-    (dt.getMonth()+1)+"月"+dt.getDate()+"日（"+WDAYS[dt.getDay()]+"）";
-  document.getElementById("memo-area").style.display = "block";
-  document.getElementById("memo-input").value = "";
+function selectDate(d){{
+  selDate=d;
+  var parts=d.split("-");
+  document.getElementById("day-title").textContent=parts[0]+"年"+parseInt(parts[1])+"月"+parseInt(parts[2])+"日";
+  document.getElementById("add-input").value="";
+  renderNotes();
+  document.getElementById("day-panel").style.display="block";
   renderCal();
-  renderSaved();
-  setTimeout(function(){{document.getElementById("memo-area").scrollIntoView({{behavior:"smooth"}});}}, 50);
+  document.getElementById("day-panel").scrollIntoView({{behavior:"smooth"}});
 }}
 
-function renderSaved(){{
-  var list = monthData[selDate]||[];
-  if (!list.length){{
-    document.getElementById("saved-list").innerHTML='<div class="empty-note">まだメモがありません</div>';
+function renderNotes(){{
+  var data=getData();
+  var notes=data[selDate]||[];
+  if(!notes.length){{
+    document.getElementById("note-list").innerHTML='<div class="no-note">予定はありません</div>';
     return;
   }}
   var html="";
-  list.forEach(function(s){{
-    var t = s.created_at ? s.created_at.replace("T"," ").substring(0,16) : "";
-    html += '<div class="saved-item">'
-          + '<div class="saved-content">'+esc(s.content)+'</div>'
-          + (t?'<div class="saved-time">'+t+'</div>':"")
-          + '<button class="del-btn" onclick="delSched(\''+s.id+'\')">削除</button>'
-          + '</div>';
+  notes.forEach(function(n,i){{
+    html+='<div class="note-item"><span class="note-text">'+esc(n)+'</span>'
+        +'<button class="note-del" onclick="delNote('+i+')">削除</button></div>';
   }});
-  document.getElementById("saved-list").innerHTML = html;
+  document.getElementById("note-list").innerHTML=html;
 }}
 
-function saveSchedule(){{
-  var content = document.getElementById("memo-input").value.trim();
-  if (!content){{ alert("メモを入力してください"); return; }}
-  if (!lineUserId){{ alert("ユーザー情報を取得できません"); return; }}
-  fetch("/liff/api/schedule",{{
-    method:"POST",
-    headers:{{"Content-Type":"application/json"}},
-    body:JSON.stringify({{line_user_id:lineUserId, date:selDate, content:content}})
-  }}).then(function(r){{return r.json();}}).then(function(d){{
-    if (d.id){{
-      if (!monthData[selDate]) monthData[selDate]=[];
-      monthData[selDate].push(d);
-      document.getElementById("memo-input").value="";
-      renderSaved(); renderCal();
-    }} else {{ alert("保存できませんでした"); }}
-  }}).catch(function(){{alert("保存できませんでした");}});
+function addNote(){{
+  var v=document.getElementById("add-input").value.trim();
+  if(!v)return;
+  var data=getData();
+  if(!data[selDate])data[selDate]=[];
+  data[selDate].push(v);
+  setData(data);
+  document.getElementById("add-input").value="";
+  renderNotes();
+  renderCal();
 }}
 
-function delSched(id){{
-  if (!confirm("削除しますか？")) return;
-  fetch("/liff/api/schedule/"+encodeURIComponent(id),{{method:"DELETE"}})
-    .then(function(r){{return r.json();}}).then(function(d){{
-      if (d.success){{
-        monthData[selDate]=(monthData[selDate]||[]).filter(function(s){{return s.id!==id;}});
-        renderSaved(); renderCal();
-      }}
-    }}).catch(function(){{alert("削除できませんでした");}});
+function delNote(i){{
+  var data=getData();
+  if(data[selDate]){{
+    data[selDate].splice(i,1);
+    if(!data[selDate].length)delete data[selDate];
+    setData(data);
+  }}
+  renderNotes();
+  renderCal();
 }}
 
-function changeMonth(delta){{
-  curMonth+=delta;
-  if (curMonth<0){{curMonth=11;curYear--;}}
-  if (curMonth>11){{curMonth=0;curYear++;}}
-  selDate="";
-  document.getElementById("memo-area").style.display="none";
-  loadMonth();
+function doBackup(){{
+  var raw=localStorage.getItem(STORE_KEY)||"{{}}";
+  var msg="📅スケジュールバックアップ\n"+raw;
+  liff.init({{liffId:LIFF_ID}}).then(function(){{
+    if(!liff.isInClient()){{ copyFallback(msg); return; }}
+    liff.sendMessages([{{type:"text",text:msg}}])
+      .then(function(){{ alert("トークにバックアップを送信しました。\nLINEのトーク履歴バックアップに含まれます。"); }})
+      .catch(function(){{ copyFallback(msg); }});
+  }}).catch(function(){{ copyFallback(msg); }});
 }}
 
-function toggleVoice(){{
-  var SR = window.SpeechRecognition||window.webkitSpeechRecognition;
-  if (!SR){{alert("このブラウザは音声入力に対応していません");return;}}
-  if (isRec){{recognition.stop();return;}}
-  recognition = new SR();
-  recognition.lang="ja-JP";
-  recognition.continuous=false;
-  recognition.interimResults=false;
-  recognition.onstart=function(){{
-    isRec=true;
-    document.getElementById("mic-btn").classList.add("rec");
-    document.getElementById("mic-btn").innerHTML="&#9209;";
-  }};
-  recognition.onresult=function(e){{
-    var ta=document.getElementById("memo-input");
-    ta.value=(ta.value?ta.value+"\n":"")+e.results[0][0].transcript;
-  }};
-  recognition.onend=recognition.onerror=function(){{
-    isRec=false;
-    document.getElementById("mic-btn").classList.remove("rec");
-    document.getElementById("mic-btn").innerHTML="&#127908;";
-  }};
-  recognition.start();
+function copyFallback(msg){{
+  if(navigator.clipboard){{
+    navigator.clipboard.writeText(msg).then(function(){{ alert("データをコピーしました。\nLINEに貼り付けて送信してください。"); }});
+  }} else {{
+    alert("LINEアプリ内で開いてください。");
+  }}
 }}
 
-function esc(s){{return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\\n/g,"<br>");}}
+function doRestore(){{
+  var txt=document.getElementById("restore-ta").value.trim();
+  var m=txt.match(/\{{[\s\S]*\}}/);
+  if(m){{
+    try{{
+      var obj=JSON.parse(m[0]);
+      setData(obj);
+      document.getElementById("restore-ta").value="";
+      document.getElementById("day-panel").style.display="none";
+      selDate="";
+      renderCal();
+      alert("復元しました！");
+    }}catch(e){{ alert("データを読み取れません。バックアップテキストをそのまま貼り付けてください。"); }}
+  }} else {{ alert("バックアップデータが見つかりません。"); }}
+}}
+
+function esc(s){{ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }}
+
+renderCal();
 </script>
 </body></html>
 """
@@ -3424,212 +3403,174 @@ _LIFF_MEMO_HTML = """\
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
 {retro_css}
-/* ヘッダー（sticky対応） */
-.hd{{background:var(--header-bg);color:var(--header-text);padding:14px 16px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:10;border-bottom:3px solid var(--border)}}
-.hd-back{{font-size:22px;background:none;border:none;color:var(--header-text);cursor:pointer;padding:4px 8px;display:none}}
-.hd h1{{font-size:20px;font-weight:bold}}
-/* リスト画面 */
-#view-list{{display:block}}
-.memo-card{{display:flex;align-items:center;padding:16px 18px;border-bottom:2px dashed var(--divider);cursor:pointer;background:var(--card-bg)}}
+body{{padding-bottom:80px}}
+.hd{{background:var(--header-bg);color:var(--header-text);padding:14px 16px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:10;border-bottom:3px solid var(--border)}}
+.hd-back{{font-size:22px;background:none;border:none;color:var(--header-text);cursor:pointer;display:none;padding:0 6px}}
+.hd h1{{font-size:20px;font-weight:bold;flex:1}}
+.memo-card{{display:flex;align-items:center;padding:14px 16px;border-bottom:2px dashed var(--divider);cursor:pointer;background:var(--card-bg)}}
 .memo-card:active{{background:var(--bg)}}
 .card-body{{flex:1;min-width:0}}
-.card-title{{font-size:18px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}}
-.card-date{{font-size:13px;color:var(--sub-text);margin-top:4px}}
-.card-menu{{font-size:20px;color:var(--border);padding:4px 8px;flex-shrink:0}}
+.card-title{{font-size:17px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}}
+.card-date{{font-size:12px;color:var(--sub-text);margin-top:3px}}
 .empty-list{{text-align:center;padding:60px 20px;color:var(--sub-text);font-size:18px}}
-/* FAB */
-.fab{{position:fixed;bottom:28px;right:24px;width:60px;height:60px;border-radius:50%;background:var(--btn-bg);color:var(--btn-text);font-size:32px;border:none;cursor:pointer;box-shadow:3px 4px 0 #5C1010;display:flex;align-items:center;justify-content:center;line-height:1}}
-.fab:active{{transform:translateY(2px);box-shadow:none}}
-/* 編集画面 */
-#view-edit{{display:none;padding:16px}}
-.edit-label{{font-size:15px;color:var(--sub-text);margin-bottom:8px;font-weight:bold}}
-.memo-textarea{{width:100%;font-size:18px;border:2px solid var(--border);border-radius:8px;padding:12px;min-height:220px;resize:vertical;line-height:1.65;font-family:inherit;background:#fffff0;color:var(--text)}}
-.memo-textarea:focus{{outline:none;border-color:var(--header-bg)}}
-.mic-row{{display:flex;justify-content:flex-end;margin-top:10px}}
-.mic-btn{{padding:10px 14px;font-size:20px;background:var(--card-bg);border:2px solid var(--border);border-radius:8px;cursor:pointer}}
-.mic-btn.rec{{border-color:var(--header-bg);background:var(--bg)}}
-.btn-save{{display:block;width:100%;margin-top:16px;padding:14px;font-size:18px;font-weight:bold;background:var(--btn-bg);color:var(--btn-text);border:none;border-radius:8px;cursor:pointer;box-shadow:2px 3px 0 #5C1010}}
-.btn-save:active{{transform:translateY(2px);box-shadow:none}}
-.btn-del{{display:block;width:100%;margin-top:10px;padding:12px;font-size:17px;font-weight:bold;background:var(--bg);color:#c62828;border:2px solid #c62828;border-radius:8px;cursor:pointer}}
-.loader{{text-align:center;padding:40px;color:var(--sub-text);font-size:18px}}
+.fab{{position:fixed;bottom:90px;right:22px;width:56px;height:56px;border-radius:50%;background:var(--btn-bg);color:var(--btn-text);font-size:30px;border:none;cursor:pointer;box-shadow:3px 4px 0 #5C1010;display:flex;align-items:center;justify-content:center}}
+#view-edit{{display:none;padding:14px}}
+.memo-textarea{{width:100%;font-size:17px;border:2px solid var(--border);border-radius:8px;padding:12px;min-height:200px;resize:vertical;line-height:1.6;font-family:inherit;background:#fffff0;color:var(--text)}}
+.btn-save{{display:block;width:100%;margin-top:12px;padding:14px;font-size:17px;font-weight:bold;background:var(--btn-bg);color:var(--btn-text);border:none;border-radius:8px;cursor:pointer;box-shadow:2px 3px 0 #5C1010}}
+.btn-del{{display:block;width:100%;margin-top:8px;padding:12px;font-size:16px;background:var(--bg);color:#c62828;border:2px solid #c62828;border-radius:8px;cursor:pointer}}
+.backup-section{{margin:16px;padding:14px;background:var(--card-bg);border:2px solid var(--border);border-radius:10px;box-shadow:2px 3px 0 var(--border)}}
+.backup-title{{font-size:14px;font-weight:bold;color:var(--sub-text);margin-bottom:8px}}
+.backup-btn{{display:block;width:100%;padding:12px;font-size:15px;font-weight:bold;background:var(--btn-bg);color:var(--btn-text);border:none;border-radius:8px;cursor:pointer;margin-bottom:10px}}
+.restore-ta{{width:100%;font-size:13px;border:2px solid var(--border);border-radius:8px;padding:8px;min-height:70px;margin-bottom:8px;background:#fffff0;color:var(--text);font-family:inherit}}
+.restore-btn{{display:block;width:100%;padding:10px;font-size:14px;background:var(--bg);color:var(--text);border:2px solid var(--border);border-radius:8px;cursor:pointer}}
 </style>
 </head>
 <body>
-
-<!-- ヘッダー -->
 <div class="hd">
   <button class="hd-back" id="hd-back" onclick="showList()">&#8592;</button>
   <h1 id="hd-title">&#128221; メモ帳</h1>
 </div>
-
-<!-- リスト画面 -->
 <div id="view-list">
-  <div id="memo-list"><div class="loader">読み込み中...</div></div>
-  <button class="fab" onclick="newMemo()">&#＋;</button>
-</div>
-
-<!-- 編集画面 -->
-<div id="view-edit">
-  <div class="edit-label" id="edit-label">新規メモ</div>
-  <textarea class="memo-textarea" id="memo-ta" placeholder="メモを入力してください..."></textarea>
-  <div class="mic-row">
-    <button class="mic-btn" id="mic-btn" onclick="toggleVoice()">&#127908;</button>
+  <div id="memo-list"></div>
+  <div class="backup-section">
+    <div class="backup-title">&#128230; 機種変更・バックアップ</div>
+    <button class="backup-btn" onclick="doBackup()">LINEにバックアップを送る</button>
+    <div class="backup-title" style="margin-top:10px">復元（バックアップのテキストを貼り付け）</div>
+    <textarea class="restore-ta" id="restore-ta" placeholder="バックアップテキストをここに貼り付け..."></textarea>
+    <button class="restore-btn" onclick="doRestore()">復元する</button>
   </div>
+  <button class="fab" onclick="newMemo()">+</button>
+</div>
+<div id="view-edit">
+  <textarea class="memo-textarea" id="memo-ta" placeholder="メモを入力してください..."></textarea>
   <button class="btn-save" onclick="saveMemo()">保存する</button>
   <button class="btn-del" id="btn-del" style="display:none" onclick="deleteMemo()">削除する</button>
 </div>
-
 <script>
 var LIFF_ID = "{liff_memo_id}";
-var lineUserId = "", memos = [], editingId = null;
-var recognition = null, isRec = false;
+var STORE_KEY = "liff_memos_v1";
+var editingId = null;
 
-liff.init({{liffId:LIFF_ID}}).then(function(){{
-  if (liff.isLoggedIn()) {{
-    liff.getProfile().then(function(p){{
-      lineUserId = p.userId;
-      loadMemos();
-    }});
-  }} else {{ liff.login(); }}
-}}).catch(function(){{
-  lineUserId = new URLSearchParams(location.search).get("line_user_id") || "";
-  loadMemos();
-}});
-
-function loadMemos(){{
-  if (!lineUserId) {{ renderList(); return; }}
-  fetch("/liff/api/memo?line_user_id="+encodeURIComponent(lineUserId))
-    .then(function(r){{return r.json();}})
-    .then(function(d){{
-      memos = d.memos || [];
-      renderList();
-    }}).catch(function(){{
-      document.getElementById("memo-list").innerHTML = '<div class="empty-list">読み込みに失敗しました</div>';
-    }});
+function getMemos(){{ try{{ return JSON.parse(localStorage.getItem(STORE_KEY)||"[]"); }}catch(e){{ return []; }} }}
+function setMemos(arr){{ localStorage.setItem(STORE_KEY, JSON.stringify(arr)); }}
+function uid(){{ return Date.now().toString(36)+Math.random().toString(36).slice(2); }}
+function fmtDate(ts){{
+  var d=new Date(ts);
+  return d.getFullYear()+"/"+(d.getMonth()+1)+"/"+d.getDate()
+    +" "+d.getHours()+":"+(d.getMinutes()<10?"0":"")+d.getMinutes();
 }}
 
 function renderList(){{
-  if (!memos.length){{
-    document.getElementById("memo-list").innerHTML = '<div class="empty-list">メモがありません<br>＋ボタンで作成できます</div>';
+  var memos=getMemos();
+  if(!memos.length){{
+    document.getElementById("memo-list").innerHTML='<div class="empty-list">メモがありません<br>＋ボタンで作成</div>';
     return;
   }}
-  var html = "";
+  var html="";
   memos.forEach(function(m){{
-    var title = (m.content||"").replace(/\\n/g," ").substring(0,20) || "（空のメモ）";
-    var dt = m.updated_at ? m.updated_at.replace("T"," ").substring(0,16) : "";
-    html += '<div class="memo-card" onclick="editMemo(\'' + m.id + '\')">'
-          + '<div class="card-body">'
-          + '<div class="card-title">' + esc(title) + '</div>'
-          + (dt ? '<div class="card-date">' + dt + '</div>' : '')
-          + '</div>'
-          + '<span class="card-menu">&#8801;</span>'
-          + '</div>';
+    var title=(m.content||"").replace(/\n/g," ").substring(0,20)||"（空のメモ）";
+    html+='<div class="memo-card" onclick="editMemo(\''+m.id+'\')">'
+        +'<div class="card-body">'
+        +'<div class="card-title">'+esc(title)+'</div>'
+        +'<div class="card-date">'+fmtDate(m.ts)+'</div>'
+        +'</div>'
+        +'<span style="color:var(--border);font-size:20px;padding:0 4px">&#8801;</span>'
+        +'</div>';
   }});
-  document.getElementById("memo-list").innerHTML = html;
+  document.getElementById("memo-list").innerHTML=html;
 }}
 
 function showList(){{
-  document.getElementById("view-list").style.display = "block";
-  document.getElementById("view-edit").style.display = "none";
-  document.getElementById("hd-back").style.display = "none";
-  document.getElementById("hd-title").textContent = "\\uD83D\\uDCD3 メモ帳";
-  editingId = null;
+  document.getElementById("view-list").style.display="block";
+  document.getElementById("view-edit").style.display="none";
+  document.getElementById("hd-back").style.display="none";
+  document.getElementById("hd-title").textContent="\uD83D\uDCD3 メモ帳";
+  editingId=null;
+  renderList();
+}}
+
+function showEdit(){{
+  document.getElementById("view-list").style.display="none";
+  document.getElementById("view-edit").style.display="block";
+  document.getElementById("hd-back").style.display="block";
 }}
 
 function newMemo(){{
-  editingId = null;
-  document.getElementById("memo-ta").value = "";
-  document.getElementById("edit-label").textContent = "新規メモ";
-  document.getElementById("btn-del").style.display = "none";
+  editingId=null;
+  document.getElementById("memo-ta").value="";
+  document.getElementById("btn-del").style.display="none";
+  document.getElementById("hd-title").textContent="新規メモ";
   showEdit();
 }}
 
 function editMemo(id){{
-  var m = memos.find(function(x){{return x.id===id;}});
-  if (!m) return;
-  editingId = id;
-  document.getElementById("memo-ta").value = m.content || "";
-  document.getElementById("edit-label").textContent = "メモを編集";
-  document.getElementById("btn-del").style.display = "block";
+  var memos=getMemos();
+  var m=memos.find(function(x){{return x.id===id;}});
+  if(!m)return;
+  editingId=id;
+  document.getElementById("memo-ta").value=m.content||"";
+  document.getElementById("btn-del").style.display="block";
+  document.getElementById("hd-title").textContent="メモを編集";
   showEdit();
 }}
 
-function showEdit(){{
-  document.getElementById("view-list").style.display = "none";
-  document.getElementById("view-edit").style.display = "block";
-  document.getElementById("hd-back").style.display = "inline-block";
-  document.getElementById("hd-title").textContent = editingId ? "編集" : "新規メモ";
-  document.getElementById("memo-ta").focus();
-}}
-
 function saveMemo(){{
-  var content = document.getElementById("memo-ta").value.trim();
-  if (!content){{ alert("メモを入力してください"); return; }}
-  if (!lineUserId){{ alert("ユーザー情報を取得できません"); return; }}
-
-  if (editingId){{
-    fetch("/liff/api/memo/"+encodeURIComponent(editingId),{{
-      method:"PUT",
-      headers:{{"Content-Type":"application/json"}},
-      body:JSON.stringify({{content:content}})
-    }}).then(function(r){{return r.json();}}).then(function(d){{
-      if (d.id){{
-        var idx = memos.findIndex(function(m){{return m.id===d.id;}});
-        if (idx>=0) memos[idx] = d;
-        renderList(); showList();
-      }} else {{ alert("保存できませんでした"); }}
-    }}).catch(function(){{alert("保存できませんでした");}});
+  var content=document.getElementById("memo-ta").value.trim();
+  if(!content)return;
+  var memos=getMemos();
+  if(editingId){{
+    memos=memos.map(function(m){{ return m.id===editingId?{{id:m.id,content:content,ts:Date.now()}}:m; }});
   }} else {{
-    fetch("/liff/api/memo",{{
-      method:"POST",
-      headers:{{"Content-Type":"application/json"}},
-      body:JSON.stringify({{line_user_id:lineUserId, content:content}})
-    }}).then(function(r){{return r.json();}}).then(function(d){{
-      if (d.id){{
-        memos.unshift(d);
-        renderList(); showList();
-      }} else {{ alert("保存できませんでした"); }}
-    }}).catch(function(){{alert("保存できませんでした");}});
+    memos.unshift({{id:uid(),content:content,ts:Date.now()}});
   }}
+  setMemos(memos);
+  showList();
 }}
 
 function deleteMemo(){{
-  if (!editingId || !confirm("このメモを削除しますか？")) return;
-  fetch("/liff/api/memo/"+encodeURIComponent(editingId),{{method:"DELETE"}})
-    .then(function(r){{return r.json();}}).then(function(d){{
-      if (d.success){{
-        memos = memos.filter(function(m){{return m.id!==editingId;}});
-        renderList(); showList();
-      }} else {{ alert("削除できませんでした"); }}
-    }}).catch(function(){{alert("削除できませんでした");}});
+  if(!editingId)return;
+  if(!confirm("削除しますか？"))return;
+  var memos=getMemos().filter(function(m){{return m.id!==editingId;}});
+  setMemos(memos);
+  showList();
 }}
 
-function toggleVoice(){{
-  var SR = window.SpeechRecognition||window.webkitSpeechRecognition;
-  if (!SR){{alert("このブラウザは音声入力に対応していません");return;}}
-  if (isRec){{recognition.stop();return;}}
-  recognition = new SR();
-  recognition.lang = "ja-JP";
-  recognition.continuous = false;
-  recognition.interimResults = false;
-  recognition.onstart = function(){{
-    isRec = true;
-    document.getElementById("mic-btn").classList.add("rec");
-    document.getElementById("mic-btn").innerHTML = "&#9209;";
-  }};
-  recognition.onresult = function(e){{
-    var ta = document.getElementById("memo-ta");
-    ta.value = (ta.value ? ta.value+"\n" : "") + e.results[0][0].transcript;
-  }};
-  recognition.onend = recognition.onerror = function(){{
-    isRec = false;
-    document.getElementById("mic-btn").classList.remove("rec");
-    document.getElementById("mic-btn").innerHTML = "&#127908;";
-  }};
-  recognition.start();
+function doBackup(){{
+  var raw=localStorage.getItem(STORE_KEY)||"[]";
+  var msg="📒メモバックアップ\n"+raw;
+  liff.init({{liffId:LIFF_ID}}).then(function(){{
+    if(!liff.isInClient()){{ copyFallback(msg); return; }}
+    liff.sendMessages([{{type:"text",text:msg}}])
+      .then(function(){{ alert("トークにバックアップを送信しました。\nLINEのトーク履歴バックアップに含まれます。"); }})
+      .catch(function(){{ copyFallback(msg); }});
+  }}).catch(function(){{ copyFallback(msg); }});
 }}
 
-function esc(s){{return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}}
+function copyFallback(msg){{
+  if(navigator.clipboard){{
+    navigator.clipboard.writeText(msg).then(function(){{ alert("データをコピーしました。\nLINEに貼り付けて送信してください。"); }});
+  }} else {{
+    alert("LINEアプリ内で開いてください。");
+  }}
+}}
+
+function doRestore(){{
+  var txt=document.getElementById("restore-ta").value.trim();
+  var m=txt.match(/\[[\s\S]*\]/);
+  if(m){{
+    try{{
+      var arr=JSON.parse(m[0]);
+      setMemos(arr);
+      document.getElementById("restore-ta").value="";
+      renderList();
+      alert("復元しました！");
+    }}catch(e){{ alert("データを読み取れません。バックアップテキストをそのまま貼り付けてください。"); }}
+  }} else {{ alert("バックアップデータが見つかりません。"); }}
+}}
+
+function esc(s){{ return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }}
+
+renderList();
 </script>
 </body></html>
 """
