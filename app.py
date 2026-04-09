@@ -2234,6 +2234,7 @@ _LIFF_VALID_PATHS = {
     "/map":      "/liff/map",
     "/schedule": "/liff/schedule",
     "/memo":     "/liff/memo",
+    "/travel":   "/liff/travel",
 }
 
 @app.route("/liff", methods=["GET"])
@@ -4102,6 +4103,226 @@ def liff_api_memo_delete(memo_id):
     except Exception as e:
         logging.exception("memo delete error: %s", e)
         return jsonify({"error": "server error"}), 500
+
+
+# ── ⑦ 旅行相談（LIFF） ──────────────────────────────
+
+_LIFF_TRAVEL_HTML = """\
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>旅行相談</title>
+<style>
+* {{ box-sizing: border-box; margin: 0; padding: 0; }}
+body {{
+  background: #F5E6A3;
+  font-family: 'Hiragino Mincho ProN','Yu Mincho','Noto Serif JP',serif;
+  font-size: 17px;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}}
+.hd {{
+  background: #8B1A1A;
+  color: #FFD700;
+  padding: 14px 16px;
+  text-align: center;
+  font-size: 20px;
+  font-weight: bold;
+  letter-spacing: 0.08em;
+  border-bottom: 4px solid #5C1010;
+  flex-shrink: 0;
+}}
+.chat-area {{
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}}
+.bubble {{
+  max-width: 82%;
+  padding: 12px 16px;
+  border-radius: 18px;
+  font-size: 17px;
+  line-height: 1.7;
+  word-break: break-all;
+  white-space: pre-wrap;
+}}
+.bubble.ai {{
+  background: #FFF8DC;
+  border: 2px solid #C8A060;
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+}}
+.bubble.user {{
+  background: #8B1A1A;
+  color: #FFD700;
+  align-self: flex-end;
+  border-bottom-right-radius: 4px;
+}}
+.bubble.loading {{
+  background: #FFF8DC;
+  border: 2px dashed #C8A060;
+  align-self: flex-start;
+  color: #AAA;
+  font-style: italic;
+}}
+.input-area {{
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #FFF8DC;
+  border-top: 2px solid #C8A060;
+  flex-shrink: 0;
+}}
+.input-area textarea {{
+  flex: 1;
+  font-size: 17px;
+  font-family: inherit;
+  border: 2px solid #C8A060;
+  border-radius: 12px;
+  padding: 10px 12px;
+  resize: none;
+  background: #FFFFF0;
+  color: #4A2C0A;
+  height: 54px;
+  max-height: 120px;
+  line-height: 1.5;
+  overflow-y: auto;
+}}
+.input-area textarea:focus {{ outline: none; border-color: #8B1A1A; }}
+.send-btn {{
+  background: #8B1A1A;
+  color: #FFD700;
+  border: none;
+  border-radius: 12px;
+  width: 64px;
+  font-size: 22px;
+  font-weight: bold;
+  cursor: pointer;
+  flex-shrink: 0;
+  touch-action: manipulation;
+}}
+.send-btn:disabled {{ background: #CCC; color: #FFF; }}
+</style>
+</head>
+<body>
+
+<div class="hd">&#9992; &#26053;&#34892;&#30456;&#35527;</div>
+
+<div class="chat-area" id="chat-area">
+  <div class="bubble ai">&#12371;&#12435;&#12395;&#12385;&#12399;&#65281;&#26053;&#34892;&#30456;&#35527;AI&#12391;&#12377;&#12290;<br>&#21306;&#20869;&#12539;&#22269;&#20869;&#12539;&#28023;&#22806;&#12289;&#12393;&#12435;&#12394;&#26053;&#34892;&#12398;&#12372;&#30456;&#35527;&#12418;&#12393;&#12358;&#12382;&#12290;<br>&#12393;&#12371;&#12395;&#34892;&#12365;&#12383;&#12356;&#12391;&#12377;&#12363;&#65311;</div>
+</div>
+
+<div class="input-area">
+  <textarea id="user-input" placeholder="&#36074;&#21839;&#12434;&#20837;&#21147;&#12375;&#12390;&#12367;&#12384;&#12373;&#12356;..." rows="1"></textarea>
+  <button class="send-btn" id="send-btn">&#9658;</button>
+</div>
+
+<script>
+var history = [];
+var TRAVEL_SYSTEM = "\u3042\u306a\u305f\u306f\u65e5\u672c\u4e00\u306e\u65cf;x6d;x31;\u884c\u5c02\u9580AI\u30a2\u30c9\u30d0\u30a4\u30b6\u30fc\u3067\u3059\u3002\u56fd\u5185\u30fb\u6d77\u5916\u3092\u554f\u308f\u305a\u3001\u89b3\u5149\u5730\u3001\u30db\u30c6\u30eb\u9078\u3073\u3001\u65c5\u7a0b\u4f5c\u308a\u3001\u4e88\u7b97\u306e\u76ee\u5b89\u3001\u5b63\u7bc0\u306e\u304a\u3059\u3059\u3081\u3001\u6301\u3061\u7269\u306a\u3069\u3001\u65e6;x6c;\u306b\u95a2\u3059\u308b\u304c\u304f\u3056\u3093\u306e\u8cea\u554f\u306b\u4e01\u5be7\u306b\u304a\u7b54\u3048\u3057\u307e\u3059\u3002\u56de\u7b54\u306f\u65e5\u672c\u8a9e\u3067\u3001\u89aa\u3057\u307f\u3084\u3059\u304f\u5206\u304b\u308a\u3084\u3059\u3044\u8a00\u8449\u3067\u3001\u7c21\u6f54\u306b\u307e\u3068\u3081\u3066\u304f\u3060\u3055\u3044\u3002";
+
+document.addEventListener('DOMContentLoaded', function() {{
+  var chatArea = document.getElementById('chat-area');
+  var input    = document.getElementById('user-input');
+  var btn      = document.getElementById('send-btn');
+
+  btn.addEventListener('click', sendMsg);
+  input.addEventListener('keydown', function(e) {{
+    if(e.key === 'Enter' && !e.shiftKey) {{ e.preventDefault(); sendMsg(); }}
+  }});
+  input.addEventListener('input', function() {{
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+  }});
+
+  function addBubble(text, type) {{
+    var el = document.createElement('div');
+    el.className = 'bubble ' + type;
+    el.textContent = text;
+    chatArea.appendChild(el);
+    chatArea.scrollTop = chatArea.scrollHeight;
+    return el;
+  }}
+
+  function sendMsg() {{
+    var q = input.value.trim();
+    if(!q || btn.disabled) return;
+    addBubble(q, 'user');
+    history.push({{role: 'user', content: q}});
+    input.value = '';
+    input.style.height = '54px';
+    btn.disabled = true;
+
+    var loading = addBubble('\u8003\u3048\u3066\u3044\u307e\u3059\u2026', 'loading');
+
+    fetch('/liff/api/travel', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{history: history}})
+    }})
+    .then(function(r) {{ return r.json(); }})
+    .then(function(d) {{
+      chatArea.removeChild(loading);
+      var reply = d.reply || '\u7533\u3057\u8a33\u3054\u3056\u3044\u307e\u305b\u3093\u3002\u3082\u3046\u4e00\u5ea6\u304a\u8a66\u3057\u304f\u3060\u3055\u3044\u3002';
+      addBubble(reply, 'ai');
+      history.push({{role: 'assistant', content: reply}});
+    }})
+    .catch(function(e) {{
+      chatArea.removeChild(loading);
+      addBubble('\u901a\u4fe1\u30a8\u30e9\u30fc\u304c\u767a\u751f\u3057\u307e\u3057\u305f\u3002\u3082\u3046\u4e00\u5ea6\u304a\u8a66\u3057\u304f\u3060\u3055\u3044\u3002', 'ai');
+    }})
+    .finally(function() {{ btn.disabled = false; input.focus(); }});
+  }}
+}});
+</script>
+</body>
+</html>
+"""
+
+
+@app.route("/liff/travel", methods=["GET"])
+def liff_travel():
+    return _LIFF_TRAVEL_HTML, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+@app.route("/liff/api/travel", methods=["POST"])
+def liff_api_travel():
+    data = request.get_json(silent=True) or {}
+    history = data.get("history", [])
+    # 最大10ターンまで保持
+    if len(history) > 20:
+        history = history[-20:]
+    # 旅行特化のシステムプロンプト
+    travel_system = (
+        "あなたは旅行専門のAIアドバイザーです。"
+        "国内・海外を問わず、観光地・ホテル選び・旅程作り・予算の目安・季節のおすすめ・"
+        "持ち物・交通手段など、旅行に関することなら何でも丁寧にお答えします。"
+        "回答は日本語で、高齢者にも分かりやすい親しみやすい言葉で、"
+        "箇条書きを活用して簡潔にまとめてください。"
+    )
+    try:
+        response = anthropic_client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            system=travel_system,
+            messages=history,
+            timeout=30,
+        )
+        reply = next(
+            (b.text for b in response.content if b.type == "text"),
+            "申し訳ありません。もう一度お試しください。",
+        )
+        return jsonify({"reply": reply})
+    except Exception as e:
+        logging.exception("travel API error: %s", e)
+        return jsonify({"reply": "ただいま混み合っています。しばらくしてからもう一度お試しください。"}), 500
 
 
 # ── ③ 特商法ページ・利用規約 ────────────────────────

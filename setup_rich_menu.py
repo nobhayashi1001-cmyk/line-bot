@@ -52,7 +52,7 @@ CH    = BTN_H // ROW  # ボタン行高さ = 600
 # ── アイコン設定 ──────────────────────────────────────────────────
 ICON_DIR   = "icons"        # アイコン画像ディレクトリ
 ICON_RATIO = 0.62           # ボタン高さに対するアイコンエリアの割合
-ICON_SIZE  = 450            # アイコン表示サイズ (px)
+ICON_SIZE  = 360            # アイコン表示サイズ (px)
 
 # ── デザイン定数 ───────────────────────────────────────────────────
 BG_COLOR           = "#F5E6A3"   # 和紙イエロー（ボタン背景）
@@ -105,8 +105,8 @@ TAB2_BUTTONS = [
     ("動画",        {"type": "uri", "uri": "https://www.youtube.com"}),
     ("天気",        {"type": "uri", "uri": f"{_LIFF_BASE}/weather"}),
     ("乗り換え",    {"type": "uri", "uri": "https://www.google.com/maps?travelmode=transit"}),
-    ("スケジュール",{"type": "uri", "uri": f"{_LIFF_BASE}/schedule"}),
-    ("メモ",        {"type": "uri", "uri": f"{_LIFF_BASE}/memo"}),
+    ("スケジュール",{"type": "uri", "uri": "https://calendar.google.com/calendar/r"}),
+    ("旅行相談",    {"type": "uri", "uri": f"{_LIFF_BASE}/travel"}),
 ]
 
 
