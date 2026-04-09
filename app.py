@@ -1807,6 +1807,16 @@ def handle_message(event):
         )
         return
 
+    # AIに聞くバー（全会員共通）
+    if msg == "AIに聞く":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="\u3054\u8cea\u554f\u3092\u3069\u3046\u305e\u3002\u4f55\u3067\u3082\u304a\u6c17\u8efd\u306b\u8074\u304b\u305b\u3066\u304f\u3060\u3055\u3044\uff01\U0001F604"
+            ),
+        )
+        return
+
     # ⑥ 会員登録（無料会員）/ AIに直接相談（有料会員）
     if msg in ("会員登録", "AIに直接相談"):
         try:

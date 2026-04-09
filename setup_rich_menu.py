@@ -39,15 +39,16 @@ HEADERS_JSON = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application
 HEADERS_AUTH = {"Authorization": f"Bearer {TOKEN}"}
 
 # ── 画像サイズ・レイアウト ──────────────────────────────────────────
-W     = 2500          # 幅
-H     = 1400          # 高さ
-TAB_H = 200           # タブバーの高さ
-TAB_W = W // 2        # タブ幅（2タブで等分）= 1250
-BTN_H = H - TAB_H    # ボタンエリアの高さ = 1200
-COL   = 3             # ボタン列数
-ROW   = 2             # ボタン行数
-CW    = W // COL      # ボタン列幅 = 833
-CH    = BTN_H // ROW  # ボタン行高さ = 600
+W        = 2500          # 幅
+AI_BAR_H = 200           # 下部「AIに聞く」バーの高さ
+H        = 1600          # 高さ（1400 + AI_BAR_H）
+TAB_H    = 200           # タブバーの高さ
+TAB_W    = W // 2        # タブ幅（2タブで等分）= 1250
+BTN_H    = H - TAB_H - AI_BAR_H  # ボタンエリアの高さ = 1200（変わらず）
+COL      = 3             # ボタン列数
+ROW      = 2             # ボタン行数
+CW       = W // COL      # ボタン列幅 = 833
+CH       = BTN_H // ROW  # ボタン行高さ = 600
 
 # ── アイコン設定 ──────────────────────────────────────────────────
 ICON_DIR   = "icons"        # アイコン画像ディレクトリ
@@ -71,6 +72,7 @@ DIVIDER_W          = 6           # 区切り線の太さ (px)
 FONT_BTN   = 100  # ボタンラベル（1行）
 FONT_SMALL = 80   # ボタンラベル（2行）
 FONT_TAB   = 90   # タブラベル
+FONT_AI    = 80   # AIバーラベル
 LINE_GAP   = 96   # 2行テキストの行間 (FONT_SMALL + 16)
 
 # ── Rich Menu Alias ID（事前定義） ────────────────────────────────
@@ -188,6 +190,7 @@ def make_image(buttons: list, output_path: str, active_tab: int = 1) -> str:
     f_btn  = _load_font(FONT_BTN)
     f_sm   = _load_font(FONT_SMALL)
     f_tab  = _load_font(FONT_TAB)
+    f_ai   = _load_font(FONT_AI)
 
     img  = Image.new("RGB", (W, H), BG_COLOR)
     draw = ImageDraw.Draw(img)
@@ -267,6 +270,42 @@ def make_image(buttons: list, output_path: str, active_tab: int = 1) -> str:
             draw.text((cx, text_y + LINE_GAP // 2), lines[1],
                       font=font, fill=TEXT_COLOR, anchor="mm")
 
+    # ── AIに聞くバー（下部固定・全タブ共通） ────────────────────────
+    ai_y = TAB_H + BTN_H  # バーの上端 y 座標
+    # バー背景
+    draw.rectangle([0, ai_y, W - 1, H - 1], fill="#FFFDE7")
+    draw.line([(0, ai_y), (W, ai_y)], fill=DIVIDER_COLOR, width=DIVIDER_W * 2)
+    draw.rectangle([0, H - DIVIDER_W], [W - 1, H - 1],
+                   fill=DIVIDER_COLOR)
+    # 入力フィールド風の丸角ボックス
+    pad_v  = 36
+    pad_h  = 48
+    send_w = 180  # 右端の送信ボタン幅
+    fx0 = pad_h
+    fy0 = ai_y + pad_v
+    fx1 = W - pad_h - send_w - 24
+    fy1 = H - pad_v
+    try:
+        draw.rounded_rectangle([fx0, fy0, fx1, fy1], radius=70,
+                               fill="#FFFFFF", outline=DIVIDER_COLOR, width=5)
+    except AttributeError:
+        draw.rectangle([fx0, fy0, fx1, fy1],
+                       fill="#FFFFFF", outline=DIVIDER_COLOR, width=5)
+    # プレースホルダーテキスト
+    draw.text((fx0 + 60, (fy0 + fy1) // 2),
+              "AI\u306b\u8054\u304f\u30fb\u30fb\u30fb",
+              font=f_ai, fill="#AAAAAA", anchor="lm")
+    # 送信ボタン（▶）
+    sx0 = fx1 + 24
+    sx1 = W - pad_h
+    try:
+        draw.rounded_rectangle([sx0, fy0, sx1, fy1], radius=70,
+                               fill="#8B1A1A")
+    except AttributeError:
+        draw.rectangle([sx0, fy0, sx1, fy1], fill="#8B1A1A")
+    draw.text(((sx0 + sx1) // 2, (fy0 + fy1) // 2),
+              "\u25b6", font=f_ai, fill="#FFD700", anchor="mm")
+
     img.save(output_path, "JPEG", quality=95)
     print(f"  画像生成: {output_path} ({W}x{H}, tab{active_tab}アクティブ)")
     return output_path
@@ -303,6 +342,16 @@ def create_rich_menu(buttons: list, menu_name: str,
             },
             "action": action,
         })
+    # AIに聞くバー（下部・横幅フル）
+    areas.append({
+        "bounds": {
+            "x": 0,
+            "y": TAB_H + BTN_H,
+            "width": W,
+            "height": AI_BAR_H,
+        },
+        "action": {"type": "message", "text": "AIに聞く"},
+    })
 
     body = {
         "size": {"width": W, "height": H},
