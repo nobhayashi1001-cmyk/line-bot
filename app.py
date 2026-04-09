@@ -2235,6 +2235,7 @@ _LIFF_VALID_PATHS = {
     "/schedule": "/liff/schedule",
     "/memo":     "/liff/memo",
     "/travel":   "/liff/travel",
+    "/calendar": "/liff/calendar",
 }
 
 @app.route("/liff", methods=["GET"])
@@ -4285,6 +4286,60 @@ document.addEventListener('DOMContentLoaded', function() {{
 </body>
 </html>
 """
+
+
+_LIFF_CALENDAR_HTML = """\
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Googleカレンダーを開く</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+body{{
+  margin:0;background:#F5E6A3;
+  font-family:'Hiragino Mincho ProN','Yu Mincho',serif;
+  display:flex;align-items:center;justify-content:center;
+  min-height:100vh;flex-direction:column;gap:20px;padding:24px;
+  text-align:center;color:#4A2C0A;
+}}
+.msg{{font-size:19px;line-height:1.8;}}
+.btn{{
+  padding:18px 32px;font-size:19px;font-weight:bold;
+  background:#8B1A1A;color:#FFD700;
+  border:none;border-radius:10px;cursor:pointer;
+  box-shadow:0 4px 0 #5C1010;touch-action:manipulation;
+}}
+</style>
+</head>
+<body>
+<div class="msg">&#128197; Google&#12459;&#12524;&#12531;&#12480;&#12540;&#12434;&#38283;&#12365;&#12414;&#12377;...</div>
+<button class="btn" id="open-btn">&#38283;&#12363;&#12394;&#12356;&#22580;&#21512;&#12399;&#12371;&#12385;&#12425;</button>
+<script>
+var GCAL_URL = "https://calendar.google.com/calendar/r";
+document.addEventListener('DOMContentLoaded', function() {{
+  document.getElementById('open-btn').addEventListener('click', function() {{
+    open(GCAL_URL);
+  }});
+  liff.init({{ liffId: "{liff_id}" }})
+    .then(function() {{
+      liff.openWindow({{ url: GCAL_URL, external: true }});
+    }})
+    .catch(function() {{
+      window.location.href = GCAL_URL;
+    }});
+}});
+</script>
+</body>
+</html>
+"""
+
+
+@app.route("/liff/calendar", methods=["GET"])
+def liff_calendar():
+    html = _LIFF_CALENDAR_HTML.format(liff_id=LIFF_ID)
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
 
 @app.route("/liff/travel", methods=["GET"])

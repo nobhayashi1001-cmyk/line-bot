@@ -105,7 +105,7 @@ TAB2_BUTTONS = [
     ("動画",        {"type": "uri", "uri": "https://www.youtube.com"}),
     ("天気",        {"type": "uri", "uri": f"{_LIFF_BASE}/weather"}),
     ("乗り換え",    {"type": "uri", "uri": "https://www.google.com/maps?travelmode=transit"}),
-    ("スケジュール",{"type": "uri", "uri": "https://calendar.google.com/calendar/r"}),
+    ("スケジュール",{"type": "uri", "uri": f"{_LIFF_BASE}/calendar"}),
     ("旅行相談",    {"type": "uri", "uri": f"{_LIFF_BASE}/travel"}),
 ]
 
