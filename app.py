@@ -10,7 +10,7 @@ from datetime import date, datetime, timezone, timedelta
 import sentry_sdk
 from sentry_sdk.integrations.flask import FlaskIntegration
 import json
-from flask import Flask, request, abort, g, jsonify, redirect
+from flask import Flask, request, abort, g, jsonify, redirect, render_template
 
 logging.basicConfig(level=logging.ERROR)
 from linebot import LineBotApi, WebhookHandler
@@ -4125,14 +4125,13 @@ def liff_api_spots():
 
 # ── ④ 地図・周辺検索（LIFF） ────────────────────────
 
-_LIFF_MAP_HTML = """\
+# HTML は templates/liff_map.html に移行済み
+_LIFF_MAP_HTML_DELETED = """\
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="ja-DELETED">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=yes">
-<title>地図・周辺検索</title>
-<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<title>deleted</title>
 <style>
 {retro_css}
 .loc-bar{{display:flex;align-items:center;gap:8px;padding:12px 16px;background:var(--card-bg);font-size:16px;border-bottom:2px solid var(--border);color:var(--sub-text)}}
@@ -4323,12 +4322,11 @@ function esc(s) {{
 
 @app.route("/liff/map", methods=["GET"])
 def liff_map():
-    html = _LIFF_MAP_HTML.format(
-        retro_css=_RETRO_CSS,
-        liff_map_id=LIFF_MAP_ID,
-        google_maps_api_key=GOOGLE_MAPS_API_KEY,
+    return render_template(
+        "liff_map.html",
+        liff_id=LIFF_ID,
+        openweather_key=OPENWEATHER_API_KEY,
     )
-    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
 
 # ── ⑤ スケジュール（LIFF） ───────────────────────────
