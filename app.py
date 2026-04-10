@@ -149,6 +149,9 @@ def get_supabase():
 
 # 登録フローの途中状態: {user_id: {"step": str, "name": str, "region": str}}
 registration_states: dict[str, dict] = {}
+# 健康相談の途中状態: {user_id: str}
+# 値: "awaiting_symptom" | "awaiting_dept" | "awaiting_medicine" | "awaiting_side_effect"
+_health_states: dict[str, str] = {}
 
 # ユーザー情報キャッシュ: {user_id: {"name": str, "region": str} | None}
 user_cache: dict[str, dict | None] = {}
@@ -760,17 +763,268 @@ def _flex_ai_consult_first() -> FlexSendMessage:
 
 
 def _flex_health_menu() -> FlexSendMessage:
-    """健康相談：3枚カード"""
+    """健康相談：入口3枚カード"""
     bubbles = [
-        _make_card_bubble("🩺", "体の症状・不調",   "気になる症状を\nやさしく一緒に確認",   "体の症状について相談したいです"),
-        _make_card_bubble("💊", "薬・病院のこと",    "お薬の飲み方や\n近くの病院を案内",      "薬や病院について教えてください"),
-        _make_card_bubble("🏃", "運動・健康習慣",    "無理なく続けられる\n運動習慣のヒント",   "健康的な運動習慣を教えてください"),
+        _make_card_bubble("🩺", "体の症状・不調",
+                          "気になる症状を\nやさしく一緒に確認",
+                          "体の症状を相談する"),
+        _make_card_bubble("🏥", "病院・薬のこと",
+                          "何科に行けばいい？\nお薬の飲み方など",
+                          "病院・薬のこと"),
+        _make_card_bubble("💪", "健康習慣・予防",
+                          "食事・運動・睡眠で\n健康的な毎日を",
+                          "健康習慣・予防"),
     ]
     return FlexSendMessage(
         alt_text="健康について相談しましょう",
         contents={"type": "carousel", "contents": bubbles},
+        quick_reply=_build_quick_reply([
+            ("症状を話す",  "体の症状を相談する"),
+            ("病院を探す",  "病院・薬のこと"),
+            ("健康習慣",    "健康習慣・予防"),
+            _QR_BACK,
+        ]),
+    )
+
+
+def _flex_health_hospital_menu() -> FlexSendMessage:
+    """病院・薬サブメニュー：4枚カード"""
+    bubbles = [
+        _make_card_bubble("🗺️", "近くの病院を探す",
+                          "地図でお近くの\n病院を探せます",
+                          "近くの病院を探す"),
+        _make_card_bubble("❓", "何科に行けばいい？",
+                          "症状に合う診療科を\n一緒に考えます",
+                          "何科に行けばいい？"),
+        _make_card_bubble("💊", "薬の飲み方・飲み忘れ",
+                          "飲み方や飲み忘れの\n対処法をお伝えします",
+                          "薬の飲み方を教えて"),
+        _make_card_bubble("⚠️", "薬の副作用",
+                          "気になる副作用を\n一緒に確認します",
+                          "副作用が心配"),
+    ]
+    return FlexSendMessage(
+        alt_text="病院・薬のこと",
+        contents={"type": "carousel", "contents": bubbles},
+        quick_reply=_build_quick_reply([
+            ("病院を探す",    "近くの病院を探す"),
+            ("何科に行く？",  "何科に行けばいい？"),
+            ("薬のこと",      "薬の飲み方を教えて"),
+            _QR_BACK,
+        ]),
+    )
+
+
+def _flex_health_habits_menu() -> FlexSendMessage:
+    """健康習慣・予防サブメニュー：3枚カード"""
+    bubbles = [
+        _make_card_bubble("🥗", "食事・栄養",
+                          "毎日の食事で\n健康をサポート",
+                          "食事・栄養の相談"),
+        _make_card_bubble("🚶", "運動・体操",
+                          "無理なく続けられる\n体操や散歩のコツ",
+                          "運動・体操の相談"),
+        _make_card_bubble("😴", "睡眠",
+                          "眠れない悩みを\n一緒に解消しましょう",
+                          "睡眠を相談する"),
+    ]
+    return FlexSendMessage(
+        alt_text="健康習慣・予防",
+        contents={"type": "carousel", "contents": bubbles},
+        quick_reply=_build_quick_reply([
+            ("食事・栄養",  "食事・栄養の相談"),
+            ("運動・体操",  "運動・体操の相談"),
+            ("睡眠",        "睡眠を相談する"),
+            _QR_BACK,
+        ]),
+    )
+
+
+def _flex_health_food_menu() -> FlexSendMessage:
+    """食事・栄養：3枚カード"""
+    bubbles = [
+        _make_card_bubble("🍳", "今日の食事を相談する",
+                          "冷蔵庫の食材から\nレシピを提案します",
+                          "今日の食事を相談したいです"),
+        _make_card_bubble("🥦", "不足している栄養は？",
+                          "年齢に合った\n栄養バランスを確認",
+                          "不足している栄養を教えてください"),
+        _make_card_bubble("📖", "健康レシピを見る",
+                          "簡単でおいしい\n健康レシピを提案",
+                          "食事レシピ"),
+    ]
+    return FlexSendMessage(
+        alt_text="食事・栄養の相談",
+        contents={"type": "carousel", "contents": bubbles},
         quick_reply=_build_quick_reply([_QR_BACK]),
     )
+
+
+def _flex_health_exercise_menu() -> FlexSendMessage:
+    """運動・体操：3枚カード"""
+    bubbles = [
+        _make_card_bubble("🏠", "室内でできる体操",
+                          "椅子に座ったまま\nできる体操を紹介",
+                          "室内でできる体操を教えて"),
+        _make_card_bubble("🚶", "散歩コースを探す",
+                          "お近くの公園や\n散歩道を地図で探す",
+                          "散歩コースを探す"),
+        _make_card_bubble("📺", "体操動画を見る",
+                          "YouTubeで体操の\n動画を見てみましょう",
+                          "体操動画を見る"),
+    ]
+    return FlexSendMessage(
+        alt_text="運動・体操",
+        contents={"type": "carousel", "contents": bubbles},
+        quick_reply=_build_quick_reply([_QR_BACK]),
+    )
+
+
+# ── 健康相談ロジック ──────────────────────────────────────────
+
+# 緊急症状（119番レベル）
+_SYMPTOM_EMERGENCY = {
+    "胸が痛い", "動悸", "息ができない", "呼吸困難", "意識がない",
+    "麻痺", "しびれ", "激しい頭痛", "ろれつが回らない", "顔が歪む",
+    "顔がゆがむ",
+}
+# 今日中に受診
+_SYMPTOM_URGENT = {
+    "38度以上", "高熱", "激しい腹痛", "転んだ", "怪我", "骨折",
+    "出血が止まらない", "ひどい痛み",
+}
+# 様子見OK
+_SYMPTOM_WATCHFUL = {
+    "少し頭痛", "鼻水", "軽い咳", "筋肉痛", "少し疲れた",
+    "眠れない", "微熱", "のどが少し",
+}
+# 精神的不調
+_SYMPTOM_MENTAL = {"気分が落ち込む", "やる気が出ない", "消えたい", "消えてしまいたい"}
+# 認知症不安
+_SYMPTOM_DEMENTIA = {"物忘れ", "認知症", "ボケ", "ぼけ", "もの忘れ"}
+
+_DEPT_MAP = [
+    ({"頭痛", "めまい", "頭が痛い", "ふらつき"},        "内科・神経内科"),
+    ({"腰痛", "膝痛", "骨折", "膝が痛い", "腰が痛い"}, "整形外科"),
+    ({"胃痛", "腹痛", "胃がもたれ", "下痢", "便秘"},   "消化器内科"),
+    ({"かゆい", "湿疹", "発疹", "皮膚"},                "皮膚科"),
+    ({"目", "見えにくい", "目が痛い", "目やに"},        "眼科"),
+    ({"耳", "鼻", "喉", "のど", "聞こえにくい"},        "耳鼻科"),
+    ({"気分が落ち込む", "不安", "眠れない", "心"},      "心療内科・精神科"),
+]
+
+
+def _route_department(msg: str) -> TextSendMessage:
+    """症状から適切な診療科を案内する。"""
+    for keywords, dept in _DEPT_MAP:
+        if any(kw in msg for kw in keywords):
+            return TextSendMessage(
+                text=(
+                    f"症状からすると\n"
+                    f"【{dept}】\n"
+                    f"がよさそうですよ😊\n\n"
+                    "まずはかかりつけのお医者さんに\n"
+                    "相談してみるのも安心ですよ"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("近くの病院を探す", "近くの病院を探す"),
+                    ("他のことを聞く",  "他のことを聞かせてください"),
+                    _QR_BACK,
+                ]),
+            )
+    return TextSendMessage(
+        text=(
+            "症状をもう少し詳しく教えてもらえますか？😊\n\n"
+            "・どこが痛いですか？\n"
+            "・いつから症状がありますか？\n\n"
+            "心配な場合はまず\nかかりつけ医に相談するのが安心ですよ"
+        ),
+        quick_reply=_build_quick_reply([
+            ("近くの病院を探す", "近くの病院を探す"),
+            _QR_BACK,
+        ]),
+    )
+
+
+def _triage_symptoms(msg: str) -> TextSendMessage | None:
+    """
+    症状メッセージをトリアージして適切な返答を返す。
+    いずれにも当てはまらない場合は None を返し、追加質問を別途行う。
+    """
+    # ① 緊急（119番）
+    if any(kw in msg for kw in _SYMPTOM_EMERGENCY):
+        return TextSendMessage(
+            text=(
+                "これは救急のサインです！\n"
+                "すぐに119番に電話してください！\n\n"
+                "電話が難しければ\n"
+                "近くの人を呼んでください"
+            ),
+        )
+
+    # ② 今日中に受診
+    if any(kw in msg for kw in _SYMPTOM_URGENT):
+        return TextSendMessage(
+            text=(
+                "心配ですね😊\n"
+                "今日中に病院に行くことを\nおすすめします\n\n"
+                "無理せず早めに\n診てもらいましょう"
+            ),
+            quick_reply=_build_quick_reply([
+                ("近くの病院を探す",   "近くの病院を探す"),
+                ("何科に行けばいい？", "何科に行けばいい？"),
+                _QR_BACK,
+            ]),
+        )
+
+    # ③ 精神的不調
+    if any(kw in msg for kw in _SYMPTOM_MENTAL):
+        return TextSendMessage(
+            text=(
+                "気持ちがつらいんですね😢\n"
+                "それはしんどいですよね\n\n"
+                "もう少し話してみませんか？\n"
+                "私はいつでもここにいますよ"
+            ),
+            quick_reply=_build_quick_reply([
+                ("話を聞いてほしい",   "もう少し話を聞いてほしいです"),
+                ("相談窓口を教えて",   "相談窓口を教えて"),
+                _QR_BACK,
+            ]),
+        )
+
+    # ④ 認知症の不安
+    if any(kw in msg for kw in _SYMPTOM_DEMENTIA):
+        return TextSendMessage(
+            text=(
+                "心配ですよね😊\n"
+                "でも物忘れは誰でもありますよ\n\n"
+                "一緒に確認してみましょうか？"
+            ),
+            quick_reply=_build_quick_reply([
+                ("チェックリストを見る", "認知症チェックリストを見る"),
+                ("相談窓口を教えて",    "相談窓口を教えて"),
+                _QR_BACK,
+            ]),
+        )
+
+    # ⑤ 様子見OK
+    if any(kw in msg for kw in _SYMPTOM_WATCHFUL):
+        return TextSendMessage(
+            text=(
+                "今は様子を見て\n大丈夫そうですよ😊\n\n"
+                "無理せずゆっくり休んでください\n"
+                "悪化するようなら病院へ行きましょう"
+            ),
+            quick_reply=_build_quick_reply([
+                ("対処法を教えて",  "対処法を教えてください"),
+                ("他のことを聞く",  "他のことを聞かせてください"),
+                _QR_BACK,
+            ]),
+        )
+
+    # ⑥ 判断できない → None を返して追加質問へ
+    return None
 
 
 def _flex_recipe_menu() -> FlexSendMessage:
@@ -1979,9 +2233,239 @@ def handle_message(event):
             )
         return
 
-    # 健康相談
+    # 健康相談（入口）
     if msg == "健康相談":
         line_bot_api.reply_message(event.reply_token, _flex_health_menu())
+        return
+
+    # ── 健康相談サブメニュー（利用カウント不要）────────────────────────
+
+    # 体の症状・不調
+    if msg in ("体の症状を相談する", "症状を話す"):
+        _health_states[user_id] = "awaiting_symptom"
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "どんな症状ですか？\n"
+                    "気になることを教えてください😊\n\n"
+                    "どんな小さなことでも\n大丈夫ですよ"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("胸・動悸・息苦しい",  "胸が痛い・動悸がする"),
+                    ("発熱・腹痛",          "高熱や激しい腹痛がある"),
+                    ("頭痛・鼻水・軽い咳",  "少し頭痛・鼻水・軽い咳がある"),
+                    ("気分の落ち込み",      "気分が落ち込む・やる気が出ない"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    # 病院・薬サブメニュー
+    if msg == "病院・薬のこと":
+        line_bot_api.reply_message(event.reply_token, _flex_health_hospital_menu())
+        return
+
+    # 健康習慣サブメニュー
+    if msg in ("健康習慣・予防", "健康習慣"):
+        line_bot_api.reply_message(event.reply_token, _flex_health_habits_menu())
+        return
+
+    # 近くの病院を探す → 地図LIFF誘導
+    if msg == "近くの病院を探す":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="地図で近くの病院を\n探してみましょう😊",
+                quick_reply=QuickReply(items=[
+                    QuickReplyButton(action=URIAction(
+                        label="🗺️ 地図で探す",
+                        uri=f"https://liff.line.me/{LIFF_ID}/map",
+                    )),
+                    QuickReplyButton(action=MessageAction(label="🏠 最初に戻る", text="最初に戻る")),
+                ]),
+            ),
+        )
+        return
+
+    # 何科に行けばいい？
+    if msg == "何科に行けばいい？":
+        _health_states[user_id] = "awaiting_dept"
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="どんな症状ですか？\n一緒に考えましょう😊",
+                quick_reply=_build_quick_reply([
+                    ("頭痛・めまい",  "頭痛やめまいがします"),
+                    ("腰痛・膝痛",   "腰や膝が痛いです"),
+                    ("胃痛・腹痛",   "胃や腹が痛いです"),
+                    ("皮膚のかゆみ", "皮膚がかゆいです"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    # 薬の飲み方
+    if msg == "薬の飲み方を教えて":
+        _health_states[user_id] = "awaiting_medicine"
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="薬の名前を教えてもらえますか？\n飲み方をお伝えしますよ😊",
+                quick_reply=_build_quick_reply([
+                    ("飲み忘れた時は？", "薬を飲み忘れた時はどうすればいい？"),
+                    ("副作用が心配",      "副作用が心配"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    # 薬の飲み忘れ
+    if msg in ("飲み忘れた時は？", "薬を飲み忘れた時はどうすればいい？"):
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "気づいた時にすぐ飲みましょう😊\n\n"
+                    "でも次の服用時間が近い場合は\n"
+                    "1回飛ばしても大丈夫ですよ\n\n"
+                    "心配な場合は薬局に\n電話してください📞"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("副作用が心配",   "副作用が心配"),
+                    ("他のことを聞く", "他のことを聞かせてください"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    # 薬の副作用
+    if msg == "副作用が心配":
+        _health_states[user_id] = "awaiting_side_effect"
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="どんな症状が出ていますか？\n一緒に確認しましょう😊",
+                quick_reply=_build_quick_reply([
+                    ("呼吸が苦しい",    "呼吸困難・全身に発疹が出た"),
+                    ("少しだるい・眠い", "少しだるい・眠気がある"),
+                    ("他の症状",        "他の副作用症状がある"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    # 食事・栄養サブメニュー
+    if msg == "食事・栄養の相談":
+        line_bot_api.reply_message(event.reply_token, _flex_health_food_menu())
+        return
+
+    # 運動・体操サブメニュー
+    if msg == "運動・体操の相談":
+        line_bot_api.reply_message(event.reply_token, _flex_health_exercise_menu())
+        return
+
+    # 散歩コースを探す → 地図LIFF
+    if msg == "散歩コースを探す":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="お近くの公園や散歩道を\n地図で探してみましょう😊",
+                quick_reply=QuickReply(items=[
+                    QuickReplyButton(action=URIAction(
+                        label="🗺️ 地図で探す",
+                        uri=f"https://liff.line.me/{LIFF_ID}/map",
+                    )),
+                    QuickReplyButton(action=MessageAction(label="🏠 最初に戻る", text="最初に戻る")),
+                ]),
+            ),
+        )
+        return
+
+    # 体操動画 → YouTube
+    if msg == "体操動画を見る":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="体操の動画をYouTubeで\n見てみましょう😊",
+                quick_reply=QuickReply(items=[
+                    QuickReplyButton(action=URIAction(
+                        label="▶️ YouTubeを開く",
+                        uri="https://www.youtube.com/results?search_query=高齢者体操",
+                    )),
+                    QuickReplyButton(action=MessageAction(label="🏠 最初に戻る", text="最初に戻る")),
+                ]),
+            ),
+        )
+        return
+
+    # 睡眠相談
+    if msg == "睡眠を相談する":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "眠れないのはつらいですよね😢\n"
+                    "一緒に原因を考えましょう😊"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("眠れない理由を話す",    "眠れない理由を話す"),
+                    ("睡眠改善のコツを教えて", "睡眠改善のコツを教えて"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    # 認知症チェックリスト
+    if msg in ("認知症チェックリストを見る", "チェックリストを見る"):
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "簡単なチェックをしてみましょう😊\n\n"
+                    "最近こんなことはありますか？\n\n"
+                    "①同じことを何度も聞く\n"
+                    "②財布やカギをよく置き忘れる\n"
+                    "③日付や曜日がわからなくなる\n"
+                    "④料理の手順がわからなくなる\n"
+                    "⑤人の名前がとっさに出ない\n\n"
+                    "3つ以上あれば一度\nかかりつけ医に相談すると安心ですよ😊"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("かかりつけ医に相談する", "かかりつけ医への相談方法を教えてください"),
+                    ("相談窓口を教えて",       "相談窓口を教えて"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    # 相談窓口
+    if msg == "相談窓口を教えて":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "いつでも話を聞いてくれる\n窓口がありますよ😊\n\n"
+                    "📞 よりそいホットライン\n"
+                    "0120-279-338（24時間）\n\n"
+                    "📞 こころの健康相談\n"
+                    "0570-064-556\n\n"
+                    "気軽に電話してみてくださいね"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("話を聞いてほしい",   "もう少し話を聞いてほしいです"),
+                    ("他のことを聞く",     "他のことを聞かせてください"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
         return
 
     # 食事レシピ
@@ -2113,6 +2597,76 @@ def handle_message(event):
 
     # 会話継続中かどうかを判定（直前がAIの返信かつ30分以内）
     in_conversation = _is_conversation_active(user_id)
+
+    # ── 健康相談トリアージ（状態ベース）────────────────────────────────
+    _hstate = _health_states.get(user_id)
+    if _hstate == "awaiting_symptom":
+        result = _triage_symptoms(msg)
+        if result:
+            _health_states.pop(user_id, None)
+            line_bot_api.reply_message(event.reply_token, result)
+            return
+        else:
+            # 判断できない → 追加質問（状態は維持しない・Claude へフォールスルー）
+            _health_states.pop(user_id, None)
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(
+                    text=(
+                        "もう少し教えてください😊\n\n"
+                        "・いつから症状がありますか？\n"
+                        "・痛みの強さは1〜10でどのくらいですか？"
+                    ),
+                    quick_reply=_build_quick_reply([
+                        ("症状を詳しく話す", "体の症状を相談する"),
+                        ("病院を探す",       "近くの病院を探す"),
+                        _QR_BACK,
+                    ]),
+                ),
+            )
+            return
+
+    if _hstate == "awaiting_dept":
+        _health_states.pop(user_id, None)
+        line_bot_api.reply_message(event.reply_token, _route_department(msg))
+        return
+
+    if _hstate == "awaiting_side_effect":
+        _health_states.pop(user_id, None)
+        # 重篤な副作用キーワード
+        _SEVERE_SIDE = {"呼吸困難", "全身に発疹", "意識がもうろう", "意識がない", "意識もうろう"}
+        if any(kw in msg for kw in _SEVERE_SIDE):
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(
+                    text=(
+                        "これはすぐに病院へ行ってください！\n"
+                        "薬の副作用の可能性があります\n\n"
+                        "飲んでいる薬を持って\n救急に行きましょう"
+                    ),
+                    quick_reply=_build_quick_reply([
+                        ("近くの病院を探す", "近くの病院を探す"),
+                        _QR_BACK,
+                    ]),
+                ),
+            )
+        else:
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(
+                    text=(
+                        "しばらく様子を見て😊\n\n"
+                        "改善しない場合は\n"
+                        "薬局や病院に相談してみてください"
+                    ),
+                    quick_reply=_build_quick_reply([
+                        ("近くの病院を探す", "近くの病院を探す"),
+                        ("他のことを聞く",   "他のことを聞かせてください"),
+                        _QR_BACK,
+                    ]),
+                ),
+            )
+        return
 
     # ── 医療・法律の専門判断キーワード ──────────────────────────────
     _EXPERT_PATTERNS = re.compile(
