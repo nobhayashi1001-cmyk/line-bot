@@ -21,11 +21,21 @@ services:
         sync: false
       - key: GOOGLE_MAPS_API_KEY
         sync: false
+      - key: OPENWEATHER_API_KEY
+        sync: false
       - key: LIFF_MAP_ID
         sync: false
       - key: LIFF_SCHEDULE_ID
         sync: false
       - key: LIFF_MEMO_ID
+        sync: false
+      - key: RICH_MENU_FREE_TAB1_ID
+        sync: false
+      - key: RICH_MENU_FREE_TAB2_ID
+        sync: false
+      - key: RICH_MENU_PAID_TAB1_ID
+        sync: false
+      - key: RICH_MENU_PAID_TAB2_ID
         sync: false
 
   - type: cron

@@ -45,7 +45,8 @@ RICH_MENU_FREE_TAB1_ID  = os.environ.get("RICH_MENU_FREE_TAB1_ID", "")
 RICH_MENU_FREE_TAB2_ID  = os.environ.get("RICH_MENU_FREE_TAB2_ID", "")
 RICH_MENU_PAID_TAB1_ID  = os.environ.get("RICH_MENU_PAID_TAB1_ID", "")
 RICH_MENU_PAID_TAB2_ID  = os.environ.get("RICH_MENU_PAID_TAB2_ID", "")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+OPENAI_API_KEY      = os.environ.get("OPENAI_API_KEY", "")
+OPENWEATHER_API_KEY = os.environ.get("OPENWEATHER_API_KEY", "")
 LIFF_ID          = os.environ.get("LIFF_ID", "")
 LIFF_INVITE_ID   = os.environ.get("LIFF_INVITE_ID",  LIFF_ID)
 LIFF_FAQ_ID      = os.environ.get("LIFF_FAQ_ID",     LIFF_ID)
@@ -2525,6 +2526,7 @@ _LIFF_VALID_PATHS = {
     "/memo":     "/liff/memo",
     "/travel":   "/liff/travel",
     "/calendar": "/liff/calendar",
+    "/today":    "/liff/today",
 }
 
 @app.route("/liff", methods=["GET"])
@@ -4864,6 +4866,617 @@ h1{{color:#555;font-size:24px;margin-bottom:16px}}p{{font-size:20px;color:#888;l
 <h1>お申し込みをキャンセルしました</h1>
 <p>またいつでもお気軽にどうぞ。<br>LINEに戻ってご利用ください。</p>
 </body></html>""", 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+# ── LIFF 今日の情報 ─────────────────────────────────────
+
+import urllib.parse as _up
+import xml.etree.ElementTree as _ET
+from concurrent.futures import ThreadPoolExecutor as _TPE, as_completed as _as_completed
+
+_TODAY_WORD_CACHE: dict[str, str] = {}   # date_str → word（当日キャッシュ）
+
+
+def _weather_emoji(icon_code: str) -> str:
+    m = {"01": "☀️", "02": "🌤️", "03": "⛅", "04": "☁️",
+         "09": "🌦️", "10": "🌧️", "11": "⛈️", "13": "❄️", "50": "🌫️"}
+    return m.get((icon_code or "01")[:2], "🌤️")
+
+
+def _clothes_advice(temp_max: float, temp_min: float) -> str:
+    avg = (temp_max + temp_min) / 2
+    if avg <= 5:
+        return "厚手のコートが必要です🧥"
+    if avg <= 15:
+        return "上着を忘れずに🧣"
+    if avg <= 22:
+        return "長袖1枚でOK👕"
+    if avg <= 28:
+        return "半袖でOKですよ👕"
+    return "熱中症に注意☀️ 水分補給を忘れずに"
+
+
+def _umbrella_advice(rain_prob: int) -> str:
+    if rain_prob <= 30:
+        return "傘は不要です☀️"
+    if rain_prob <= 60:
+        return "折りたたみ傘があると安心🌂"
+    return "傘を持って出かけましょう☂️"
+
+
+def _health_advice(temp_max: float, temp_min: float) -> str:
+    month = date.today().month
+    diff = temp_max - temp_min
+    msgs = []
+    if 2 <= month <= 5:
+        msgs.append("花粉の季節です😷 外出時はマスクを")
+    elif 6 <= month <= 9:
+        msgs.append("熱中症に注意🌡️ こまめに水分補給を")
+    elif month in (12, 1, 2):
+        msgs.append("路面凍結に注意❄️ 転倒しないよう気をつけて")
+    if diff >= 10:
+        msgs.append(f"気温差が{int(diff)}度あります。羽織るものを😊")
+    return "　".join(msgs) if msgs else ""
+
+
+def _fetch_weather(prefecture: str, city: str) -> dict:
+    """OpenWeatherMap から天気情報を取得する。"""
+    if not OPENWEATHER_API_KEY:
+        return {"error": "APIキー未設定"}
+    location = city or prefecture
+    if not location:
+        return {"error": "地域情報なし"}
+    try:
+        geo = httpx.get(
+            "http://api.openweathermap.org/geo/1.0/direct",
+            params={"q": f"{location},JP", "limit": 1, "appid": OPENWEATHER_API_KEY},
+            timeout=8,
+        ).json()
+        if not geo:
+            return {"error": "地域が見つかりません"}
+        lat, lon = geo[0]["lat"], geo[0]["lon"]
+
+        cur = httpx.get(
+            "https://api.openweathermap.org/data/2.5/weather",
+            params={"lat": lat, "lon": lon, "appid": OPENWEATHER_API_KEY,
+                    "units": "metric", "lang": "ja"},
+            timeout=8,
+        ).json()
+
+        fct = httpx.get(
+            "https://api.openweathermap.org/data/2.5/forecast",
+            params={"lat": lat, "lon": lon, "appid": OPENWEATHER_API_KEY,
+                    "units": "metric", "lang": "ja", "cnt": 8},
+            timeout=8,
+        ).json()
+
+        # 今日の降水確率（3h ブロック最大値）
+        today_str = date.today().isoformat()
+        rain_prob = 0
+        for item in (fct.get("list") or []):
+            if datetime.fromtimestamp(item["dt"]).strftime("%Y-%m-%d") == today_str:
+                rain_prob = max(rain_prob, int(item.get("pop", 0) * 100))
+
+        main = cur["main"]
+        temp_max = round(main.get("temp_max", main["temp"]))
+        temp_min = round(main.get("temp_min", main["temp"]))
+        description = (cur["weather"][0].get("description") or "").strip()
+        icon_code = cur["weather"][0].get("icon", "01d")
+        wind_speed = round(cur.get("wind", {}).get("speed", 0), 1)
+
+        return {
+            "description": description,
+            "icon_emoji":  _weather_emoji(icon_code),
+            "temp_max":    temp_max,
+            "temp_min":    temp_min,
+            "rain_prob":   rain_prob,
+            "wind_speed":  wind_speed,
+            "clothes":     _clothes_advice(temp_max, temp_min),
+            "umbrella":    _umbrella_advice(rain_prob),
+            "health":      _health_advice(temp_max, temp_min),
+            "error":       None,
+        }
+    except Exception as e:
+        logging.error("weather fetch error: %s", e)
+        return {"error": "天気情報を取得できませんでした"}
+
+
+def _fetch_today_word() -> str:
+    """Claude Haiku で今日のひとことを生成（当日キャッシュ）。"""
+    today = date.today()
+    key = today.isoformat()
+    if key in _TODAY_WORD_CACHE:
+        return _TODAY_WORD_CACHE[key]
+
+    month, day = today.month, today.day
+    season = {12: "冬", 1: "冬", 2: "冬", 3: "春", 4: "春", 5: "春",
+              6: "夏", 7: "夏", 8: "夏", 9: "秋", 10: "秋", 11: "秋"}[month]
+    fallbacks = {
+        "春": "春の風が心地よい季節ですね🌸 今日も元気に過ごしましょう！",
+        "夏": "暑い日が続きますね☀️ こまめに水分補給してください！",
+        "秋": "秋の空気が気持ちいいですね🍂 今日も良い一日を！",
+        "冬": "寒い日が続いています❄️ 暖かくしてお過ごしください！",
+    }
+    try:
+        resp = anthropic_client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=80,
+            messages=[{"role": "user", "content": (
+                f"今日は{today.year}年{month}月{day}日（{season}）です。\n"
+                "高齢者向けの温かい一言メッセージを日本語で生成してください。\n"
+                "季節・記念日・豆知識・励ましなど内容を毎日変えて。\n"
+                "40文字以内で絵文字を1〜2個使用。メッセージのみ出力してください。"
+            )}],
+            timeout=12,
+        )
+        word = resp.content[0].text.strip()
+        _TODAY_WORD_CACHE[key] = word
+        # 前日以前のキャッシュを削除
+        for old_key in list(_TODAY_WORD_CACHE):
+            if old_key < key:
+                _TODAY_WORD_CACHE.pop(old_key, None)
+        return word
+    except Exception as e:
+        logging.error("today_word error: %s", e)
+        return fallbacks[season]
+
+
+def _fetch_local_news(prefecture: str, city: str) -> list:
+    """Google News RSS からローカルニュースを最大3件取得する。"""
+    query = city or prefecture or "地域ニュース"
+    try:
+        url = (
+            "https://news.google.com/rss/search"
+            f"?q={_up.quote(query)}&hl=ja&gl=JP&ceid=JP:ja"
+        )
+        resp = httpx.get(url, timeout=8, follow_redirects=True)
+        root = _ET.fromstring(resp.text)
+        items = []
+        for item in root.findall(".//item")[:3]:
+            t = item.find("title")
+            l = item.find("link")
+            if t is not None and l is not None:
+                title = (t.text or "").strip()
+                link  = (l.text or "").strip()
+                if " - " in title:
+                    title = title.rsplit(" - ", 1)[0]
+                items.append({"title": title[:55], "link": link})
+        return items
+    except Exception as e:
+        logging.error("news fetch error: %s", e)
+        return []
+
+
+def _closing_word() -> str:
+    hour = datetime.now(timezone(timedelta(hours=9))).hour
+    month = date.today().month
+    season_emoji = {
+        12: "❄️", 1: "❄️", 2: "❄️",
+        3: "🌸", 4: "🌸", 5: "🌿",
+        6: "☔", 7: "☀️", 8: "☀️",
+        9: "🍂", 10: "🍂", 11: "🍂"
+    }.get(month, "😊")
+    if hour < 12:
+        return f"今日も素敵な一日になりますように{season_emoji}"
+    if hour < 18:
+        return f"午後も元気に過ごしてくださいね{season_emoji}"
+    return f"今日もお疲れさまでした。ゆっくり休んでください{season_emoji}"
+
+
+@app.route("/liff/api/today", methods=["GET"])
+def liff_today_api():
+    user_id = request.args.get("line_user_id", "").strip()
+    if not user_id:
+        return jsonify({"error": "line_user_id required"}), 400
+    try:
+        result = get_supabase().table("users").select(
+            "name, region, prefecture, city, is_paid"
+        ).eq("line_user_id", user_id).limit(1).execute()
+        if not result.data:
+            return jsonify({"error": "user not found"}), 404
+        user = result.data[0]
+    except Exception as e:
+        logging.exception("today api user fetch: %s", e)
+        return jsonify({"error": "server error"}), 500
+
+    pref = user.get("prefecture") or ""
+    city = user.get("city") or ""
+    if not pref and not city:
+        region = user.get("region") or ""
+        m = re.match(r'^(.+?[都道府県])(.+)$', region)
+        if m:
+            pref, city = m.group(1), m.group(2)
+
+    # 並列取得
+    results: dict = {}
+    with _TPE(max_workers=3) as ex:
+        fut_weather = ex.submit(_fetch_weather, pref, city)
+        fut_word    = ex.submit(_fetch_today_word)
+        fut_news    = ex.submit(_fetch_local_news, pref, city)
+        results["weather"] = fut_weather.result()
+        results["today_word"] = fut_word.result()
+        results["news"] = fut_news.result()
+
+    return jsonify({
+        "user":         {"name": user.get("name") or "", "region": pref + city},
+        "weather":      results["weather"],
+        "today_word":   results["today_word"],
+        "news":         results["news"],
+        "closing_word": _closing_word(),
+    })
+
+
+_LIFF_TODAY_HTML = """\
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=yes">
+<title>今日の情報</title>
+<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+{retro_css}
+/* ── 今日ページ固有スタイル ─── */
+body {{ background:#FFFFFF; font-size:18px; }}
+.wrap {{ max-width:520px; margin:0 auto; padding-bottom:40px; }}
+
+/* ヘッダー */
+.today-header {{
+  background: var(--header-bg);
+  color: var(--header-text);
+  padding: 20px 16px 14px;
+  text-align: center;
+}}
+.today-header .greeting {{ font-size:24px; font-weight:bold; letter-spacing:.05em; }}
+.today-header .date-str {{ font-size:16px; margin-top:6px; opacity:.9; }}
+
+/* ローディング */
+.loader {{
+  text-align:center; padding:60px 20px;
+  color:var(--sub-text); font-size:20px;
+}}
+.spinner {{
+  display:inline-block; width:44px; height:44px;
+  border:5px solid #ddd; border-top-color:var(--header-bg);
+  border-radius:50%; animation:spin .8s linear infinite;
+  margin-bottom:14px;
+}}
+@keyframes spin {{ to{{transform:rotate(360deg)}} }}
+
+/* セクションタイトル */
+.sec-title {{
+  font-size:17px; font-weight:bold; color:var(--header-bg);
+  border-left:5px solid var(--header-bg);
+  padding-left:10px; margin:20px 16px 8px;
+}}
+
+/* 今日のひとこと */
+.word-card {{
+  background:#FFFDE7; border:2px solid #F9A825;
+  border-radius:14px; padding:18px 20px;
+  margin:8px 16px; font-size:20px; line-height:1.6;
+  color:#4A2C0A; text-align:center;
+  box-shadow:2px 3px 0 #F9A825;
+}}
+
+/* 天気カード（最重要）*/
+.weather-card {{
+  background:var(--card-bg); border:2px solid var(--border);
+  border-radius:14px; padding:20px 16px;
+  margin:8px 16px; box-shadow:2px 3px 0 var(--border);
+}}
+.weather-main {{
+  display:flex; align-items:center; gap:14px;
+  margin-bottom:16px;
+}}
+.weather-icon {{ font-size:64px; line-height:1; }}
+.weather-desc {{}}
+.weather-desc .desc-text {{ font-size:20px; color:var(--text); font-weight:bold; }}
+.weather-desc .temp-row {{
+  font-size:28px; font-weight:bold; color:var(--header-bg);
+  margin-top:4px;
+}}
+.weather-desc .temp-row .temp-min {{ font-size:22px; color:var(--sub-text); }}
+
+.advice-row {{
+  display:flex; gap:10px; flex-wrap:wrap; margin-top:8px;
+}}
+.advice-chip {{
+  background:#FFF8DC; border:2px solid var(--border);
+  border-radius:20px; padding:8px 14px;
+  font-size:17px; color:var(--text); flex:1; min-width:140px;
+  text-align:center; line-height:1.4;
+}}
+.advice-chip.full {{ flex:100%; min-width:unset; }}
+.detail-row {{
+  display:flex; gap:16px; margin-top:12px;
+  font-size:16px; color:var(--sub-text);
+}}
+.health-advice {{
+  background:#FFF3E0; border:2px solid #FF8F00;
+  border-radius:10px; padding:10px 14px;
+  font-size:17px; color:#4A2C0A; margin-top:12px;
+  line-height:1.5;
+}}
+.weather-err {{
+  text-align:center; padding:24px; font-size:18px;
+  color:var(--sub-text);
+}}
+
+/* スケジュール */
+.schedule-card {{
+  background:var(--card-bg); border:2px solid var(--border);
+  border-radius:14px; padding:16px;
+  margin:8px 16px; box-shadow:2px 3px 0 var(--border);
+}}
+.sched-item {{
+  font-size:19px; padding:10px 0;
+  border-bottom:1px dashed var(--divider);
+  color:var(--text); line-height:1.5;
+}}
+.sched-item:last-child {{ border-bottom:none; }}
+.sched-link {{
+  display:block; width:100%;
+  background:var(--header-bg); color:var(--header-text);
+  border:none; border-radius:10px; padding:14px;
+  font-size:18px; font-weight:bold; text-align:center;
+  text-decoration:none; cursor:pointer;
+  margin-top:8px; box-shadow:2px 3px 0 #5C1010;
+}}
+.sched-link:active {{ transform:translateY(2px); box-shadow:none; }}
+
+/* ゴミ */
+.garbage-card {{
+  background:#F1F8E9; border:2px solid #7CB342;
+  border-radius:14px; padding:16px;
+  margin:8px 16px; font-size:20px; color:#33691E;
+  text-align:center; box-shadow:2px 3px 0 #7CB342;
+}}
+
+/* ニュース */
+.news-card {{
+  background:var(--card-bg); border:2px solid var(--border);
+  border-radius:14px; padding:4px 16px;
+  margin:8px 16px; box-shadow:2px 3px 0 var(--border);
+}}
+.news-item {{
+  padding:14px 0; border-bottom:1px dashed var(--divider);
+  font-size:17px; color:var(--text); line-height:1.5;
+}}
+.news-item:last-child {{ border-bottom:none; }}
+.news-item a {{
+  color:var(--text); text-decoration:none; display:block;
+}}
+.news-item a:active {{ color:var(--header-bg); }}
+
+/* 締めのひとこと */
+.closing-card {{
+  background:var(--header-bg); color:var(--header-text);
+  border-radius:14px; padding:20px;
+  margin:8px 16px; text-align:center;
+  font-size:22px; font-weight:bold;
+  box-shadow:2px 3px 0 #5C1010;
+}}
+
+/* エラー・再読み込み */
+.err-card {{
+  background:#FFF0F0; border:2px solid #C62828;
+  border-radius:14px; padding:16px; margin:8px 16px;
+  text-align:center; color:#B71C1C; font-size:18px;
+}}
+.reload-btn {{
+  background:var(--header-bg); color:var(--header-text);
+  border:none; border-radius:8px; padding:12px 24px;
+  font-size:18px; font-weight:bold; cursor:pointer;
+  margin-top:12px;
+}}
+</style>
+</head>
+<body>
+<div class="today-header">
+  <div class="greeting" id="greeting">読み込み中…</div>
+  <div class="date-str" id="date-str"></div>
+</div>
+
+<div class="wrap">
+  <!-- ローディング -->
+  <div id="loader" class="loader">
+    <div><div class="spinner"></div></div>
+    <div>情報を取得しています…</div>
+  </div>
+
+  <!-- コンテンツ（取得後に表示） -->
+  <div id="content" style="display:none">
+
+    <!-- 今日のひとこと -->
+    <div class="sec-title">💬 今日のひとこと</div>
+    <div class="word-card" id="word-card"></div>
+
+    <!-- 天気 -->
+    <div class="sec-title">🌤️ 今日の天気</div>
+    <div id="weather-area"></div>
+
+    <!-- スケジュール -->
+    <div class="sec-title">📅 今日の予定</div>
+    <div class="schedule-card" id="schedule-area"></div>
+
+    <!-- ゴミ -->
+    <div id="garbage-wrap" style="display:none">
+      <div class="sec-title">🗑️ 今日のゴミ</div>
+      <div class="garbage-card" id="garbage-area"></div>
+    </div>
+
+    <!-- ニュース -->
+    <div id="news-wrap" style="display:none">
+      <div class="sec-title">📰 地元のニュース</div>
+      <div class="news-card" id="news-area"></div>
+    </div>
+
+    <!-- 締め -->
+    <div class="closing-card" id="closing-card"></div>
+
+    <!-- 再読み込み -->
+    <div style="text-align:center;margin:24px 16px">
+      <button class="reload-btn" onclick="reload()">🔄 再読み込み</button>
+    </div>
+  </div><!-- /content -->
+
+  <!-- グローバルエラー -->
+  <div id="global-err" style="display:none" class="err-card">
+    <div id="global-err-msg">エラーが発生しました</div>
+    <button class="reload-btn" onclick="reload()">🔄 再読み込み</button>
+  </div>
+</div><!-- /wrap -->
+
+<script>
+var LIFF_ID = "{liff_id}";
+var userId  = null;
+
+// 日付・挨拶
+(function(){{
+  var now = new Date();
+  var h   = now.getHours();
+  var weekdays = ['日','月','火','水','木','金','土'];
+  var dateStr = now.getFullYear() + '年' +
+    (now.getMonth()+1) + '月' + now.getDate() + '日（' +
+    weekdays[now.getDay()] + '）';
+  document.getElementById('date-str').textContent = dateStr;
+}})();
+
+function greet(name){{
+  var h = new Date().getHours();
+  var salut = h < 11 ? 'おはようございます' : h < 17 ? 'こんにちは' : 'こんばんは';
+  var who = name ? name + 'さん' : 'ようこそ';
+  document.getElementById('greeting').textContent = salut + '、' + who + '😊';
+}}
+
+// LIFF 初期化
+liff.init({{liffId: LIFF_ID}})
+  .then(function(){{
+    if(!liff.isLoggedIn()){{ liff.login(); return; }}
+    return liff.getProfile();
+  }})
+  .then(function(profile){{
+    if(!profile) return;
+    userId = profile.userId;
+    loadData();
+  }})
+  .catch(function(){{
+    showGlobalErr('LINEログインに失敗しました。\\nLINEアプリから開き直してください。');
+  }});
+
+function loadData(){{
+  fetch('/liff/api/today?line_user_id=' + encodeURIComponent(userId))
+    .then(function(r){{ return r.json(); }})
+    .then(function(d){{
+      if(d.error){{ showGlobalErr('ユーザー情報が見つかりません。\\nLINEで登録を完了してください。'); return; }}
+      render(d);
+    }})
+    .catch(function(){{
+      showGlobalErr('データを取得できませんでした。\\n通信状況をご確認ください。');
+    }});
+}}
+
+function render(d){{
+  // 挨拶
+  greet((d.user||{{}}).name||'');
+
+  // 今日のひとこと
+  document.getElementById('word-card').textContent = d.today_word || '今日も良い一日を😊';
+
+  // 天気
+  renderWeather(d.weather||{{}});
+
+  // スケジュール
+  renderSchedule();
+
+  // ゴミ（サーバーから返ってくることがあれば表示）
+  if(d.garbage){{
+    document.getElementById('garbage-area').textContent = d.garbage;
+    document.getElementById('garbage-wrap').style.display = 'block';
+  }}
+
+  // ニュース
+  renderNews(d.news||[]);
+
+  // 締め
+  document.getElementById('closing-card').textContent = d.closing_word || '今日も良い一日を😊';
+
+  document.getElementById('loader').style.display  = 'none';
+  document.getElementById('content').style.display = 'block';
+}}
+
+function renderWeather(w){{
+  var area = document.getElementById('weather-area');
+  if(w.error){{
+    area.innerHTML = '<div class="weather-card"><div class="weather-err">⚠️ ' + esc(w.error) + '</div></div>';
+    return;
+  }}
+  var healthHtml = w.health
+    ? '<div class="health-advice">⚠️ ' + esc(w.health) + '</div>'
+    : '';
+  area.innerHTML =
+    '<div class="weather-card">' +
+      '<div class="weather-main">' +
+        '<div class="weather-icon">' + (w.icon_emoji||'🌤️') + '</div>' +
+        '<div class="weather-desc">' +
+          '<div class="desc-text">' + esc(w.description||'') + '</div>' +
+          '<div class="temp-row">' +
+            '最高 <strong>' + (w.temp_max!==undefined?w.temp_max:'--') + '°</strong>&nbsp;' +
+            '<span class="temp-min">最低 ' + (w.temp_min!==undefined?w.temp_min:'--') + '°</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="advice-row">' +
+        '<div class="advice-chip">👕 ' + esc(w.clothes||'') + '</div>' +
+        '<div class="advice-chip">☂️ ' + esc(w.umbrella||'') + '</div>' +
+        '<div class="advice-chip full">💨 風速 ' + (w.wind_speed!==undefined?w.wind_speed:'--') + 'm/s　🌂 降水確率 ' + (w.rain_prob!==undefined?w.rain_prob:'--') + '%</div>' +
+      '</div>' +
+      healthHtml +
+    '</div>';
+}}
+
+function renderSchedule(){{
+  var area = document.getElementById('schedule-area');
+  area.innerHTML =
+    '<div class="sched-item">📅 スケジュールの確認・登録はこちら</div>' +
+    '<a class="sched-link" href="/liff/calendar">📆 カレンダーを開く</a>';
+}}
+
+function renderNews(items){{
+  if(!items||!items.length) return;
+  var area = document.getElementById('news-area');
+  var html = '';
+  items.forEach(function(item){{
+    html += '<div class="news-item"><a href="' + esc(item.link) + '" target="_blank">📰 ' + esc(item.title) + '</a></div>';
+  }});
+  area.innerHTML = html;
+  document.getElementById('news-wrap').style.display = 'block';
+}}
+
+function showGlobalErr(msg){{
+  document.getElementById('loader').style.display     = 'none';
+  document.getElementById('global-err-msg').textContent = msg;
+  document.getElementById('global-err').style.display = 'block';
+}}
+
+function reload(){{
+  location.reload();
+}}
+
+function esc(s){{
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}}
+</script>
+</body>
+</html>
+"""
+
+
+@app.route("/liff/today", methods=["GET"])
+def liff_today():
+    html = _LIFF_TODAY_HTML.format(retro_css=_RETRO_CSS, liff_id=LIFF_ID)
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
 
 # ── ヘルスチェック ────────────────────────────────────
