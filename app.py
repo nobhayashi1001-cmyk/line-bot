@@ -3553,163 +3553,43 @@ def liff_update_user():
 
 # ── LIFF 紹介ページ ───────────────────────────────────
 
-_LINE_ADD_URL  = "https://line.me/R/ti/p/@135dsiqh"
-
-_LIFF_INVITE_HTML = """\
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-<title>友達を紹介する</title>
-<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-<style>
-{retro_css}
-.wrap{{max-width:480px;margin:0 auto;padding:16px}}
-.code-box{{background:var(--bg);border:3px solid var(--border);border-radius:14px;padding:20px;text-align:center;margin:16px 0}}
-.code-lbl{{font-size:16px;color:var(--sub-text);margin-bottom:8px}}
-.code-val{{font-size:44px;font-weight:bold;color:var(--header-bg);letter-spacing:6px;font-family:monospace}}
-.merit{{background:#fffff0;border:2px dashed var(--border);border-radius:10px;padding:16px;font-size:18px;line-height:1.8;color:var(--text);text-align:center}}
-.merit strong{{color:var(--header-bg);font-size:20px}}
-.retro-btn-outline{{display:block;width:100%;background:#fffff0;color:var(--header-bg);border:3px solid var(--header-bg);border-radius:8px;padding:14px;font-size:16px;font-weight:bold;text-align:center;cursor:pointer;margin-top:12px}}
-.loader{{text-align:center;padding:48px;color:var(--sub-text);font-size:18px}}
-.errmsg{{background:#fff0f0;border:2px solid #c62828;border-radius:10px;padding:18px;color:#b71c1c;text-align:center;font-size:18px;line-height:1.6}}
-.ok-copy{{background:#e8f5e9;border:2px solid #43a047;border-radius:8px;padding:10px;color:#2e7d32;text-align:center;font-size:18px;display:none;margin-top:10px}}
-</style>
-</head>
-<body>
-<div class="retro-header">
-  <h1>🎁 友達を紹介しよう！</h1>
-  <p>紹介すると2人に5回プレゼント</p>
-</div>
-<div class="wrap">
-  <div id="loader" class="loader">読み込み中…</div>
-  <div id="errmsg" class="errmsg" style="display:none"></div>
-  <div id="content" style="display:none">
-
-    <!-- 紹介コード -->
-    <div class="retro-card">
-      <div class="retro-section-title">🔑 あなたの紹介コード</div>
-      <div class="code-box">
-        <div class="code-lbl">このコードをお友達に教えてください</div>
-        <div class="code-val" id="ref-code">------</div>
-      </div>
-      <div class="merit">
-        お友達が登録時にこのコードを入力すると<br>
-        <strong>あなたに5回・お友達に5回</strong>プレゼント🎁
-      </div>
-    </div>
-
-    <!-- シェアボタン -->
-    <div class="retro-card">
-      <div class="retro-section-title">📤 シェアする</div>
-      <button class="retro-btn" onclick="shareLine()">
-        💬 LINEでシェアする
-      </button>
-      <button class="retro-btn-outline" onclick="copyText()">
-        📋 コピーする
-      </button>
-      <div id="ok-copy" class="ok-copy">✅ コピーしました！</div>
-    </div>
-
-  </div><!-- /content -->
-</div><!-- /wrap -->
-
-<script>
-var LIFF_ID  = "{liff_invite_id}";
-var ADD_URL  = "{add_url}";
-var refCode  = '';
-var uid      = null;
-
-liff.init({{liffId: LIFF_ID}})
-  .then(function(){{
-    if(!liff.isLoggedIn()){{ liff.login(); return; }}
-    return liff.getProfile();
-  }})
-  .then(function(profile){{
-    if(!profile) return;
-    uid = profile.userId;
-    return loadReferral(profile.userId);
-  }})
-  .catch(function(){{
-    showErr('ログインできませんでした。\\nLINEアプリから開き直してください。');
-  }});
-
-function loadReferral(userId){{
-  return fetch('/liff/api/referral?line_user_id=' + encodeURIComponent(userId))
-    .then(function(r){{ return r.json(); }})
-    .then(function(d){{
-      if(d.error){{ showErr('ユーザー情報が見つかりません。\\nLINEで登録を完了してください。'); return; }}
-      refCode = d.referral_code;
-      document.getElementById('ref-code').textContent = refCode;
-      document.getElementById('loader').style.display  = 'none';
-      document.getElementById('content').style.display = 'block';
-    }})
-    .catch(function(){{ showErr('通信エラーが発生しました。'); }});
-}}
-
-function buildShareText(){{
-  return '地元くらしの御用聞きを使ってみてください！\\n'
-       + '毎日の生活をAIがサポートしてくれますよ😊\\n\\n'
-       + '▼ 友達追加はこちら\\n'
-       + ADD_URL + '\\n\\n'
-       + '紹介コード：' + refCode + '\\n'
-       + '（登録時に入力すると2人に5回プレゼント🎁）';
-}}
-
-function shareLine(){{
-  if(!liff.isApiAvailable('shareTargetPicker')){{
-    alert('この端末ではLINEシェアが使えません。\\n「コピーする」ボタンをご利用ください。');
-    return;
-  }}
-  liff.shareTargetPicker([{{type:'text', text: buildShareText()}}])
-    .catch(function(){{ /* キャンセルは無視 */ }});
-}}
-
-function copyText(){{
-  var text = buildShareText();
-  if(navigator.clipboard && navigator.clipboard.writeText){{
-    navigator.clipboard.writeText(text).then(showCopied).catch(fallbackCopy.bind(null, text));
-  }} else {{
-    fallbackCopy(text);
-  }}
-}}
-
-function fallbackCopy(text){{
-  var ta = document.createElement('textarea');
-  ta.value = text;
-  ta.style.position = 'fixed'; ta.style.opacity = '0';
-  document.body.appendChild(ta);
-  ta.select(); document.execCommand('copy');
-  document.body.removeChild(ta);
-  showCopied();
-}}
-
-function showCopied(){{
-  var el = document.getElementById('ok-copy');
-  el.style.display = 'block';
-  setTimeout(function(){{ el.style.display='none'; }}, 3000);
-}}
-
-function showErr(msg){{
-  document.getElementById('loader').style.display = 'none';
-  var b = document.getElementById('errmsg');
-  b.textContent = msg; b.style.display = 'block';
-}}
-</script>
-</body>
-</html>
-"""
-
-
 @app.route("/liff/invite", methods=["GET"])
 def liff_invite():
-    html = _LIFF_INVITE_HTML.format(
-        retro_css=_RETRO_CSS,
-        liff_invite_id=LIFF_INVITE_ID,
-        add_url=_LINE_ADD_URL,
+    return render_template("liff_invite.html",
+        liff_id=os.environ.get("LIFF_ID", LIFF_ID),
     )
-    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
+@app.route("/liff/api/invite", methods=["GET"])
+def liff_api_invite():
+    user_id = request.args.get("line_user_id", "").strip()
+    if not user_id:
+        return jsonify({"error": "line_user_id required"}), 400
+    try:
+        sb = get_supabase()
+        result = sb.table("users").select(
+            "referral_code, bonus_count"
+        ).eq("line_user_id", user_id).execute()
+        if not result.data:
+            return jsonify({"error": "user not found"}), 404
+        row = result.data[0]
+        referral_code = row.get("referral_code") or ""
+        bonus_count   = row.get("bonus_count") or 0
+        # 自分の紹介コードを使って登録した人数
+        referred_count = 0
+        if referral_code:
+            cnt = sb.table("users").select("id", count="exact").eq(
+                "referred_by", referral_code.upper()
+            ).execute()
+            referred_count = cnt.count if cnt.count is not None else 0
+        return jsonify({
+            "referral_code": referral_code,
+            "bonus_count":   bonus_count,
+            "referred_count": referred_count,
+        })
+    except Exception as e:
+        logging.exception("liff_api_invite error: %s", e)
+        return jsonify({"error": "server error"}), 500
 
 
 @app.route("/liff/api/referral", methods=["GET"])
