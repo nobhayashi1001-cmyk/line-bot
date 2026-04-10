@@ -731,6 +731,114 @@ def _flex_ai_direct_menu() -> FlexSendMessage:
     return FlexSendMessage(alt_text="なんでも直接聞いてください", contents=bubble)
 
 
+# ── 新メニュー用フレックスメッセージ ───────────────────────────────
+
+def _flex_ai_consult_menu() -> FlexSendMessage:
+    """AIに相談：案内カード（無料会員向け）"""
+    bubble = _retro_bubble(
+        title="何でもお気軽にどうぞ 😊",
+        icon="🤖",
+        desc=(
+            "・健康のこと\n"
+            "・地元の情報\n"
+            "・生活の困りごと\n"
+            "・なんでも話しかけてください"
+        ),
+        action={"type": "message", "label": "話しかける", "text": "話しかける"},
+        size="mega",
+    )
+    return FlexSendMessage(
+        alt_text="何でもお気軽にどうぞ",
+        contents=bubble,
+        quick_reply=_build_quick_reply([
+            ("話しかける",       "話しかける"),
+            ("よくある質問",     "よくある質問を教えてください"),
+            _QR_BACK,
+        ]),
+    )
+
+
+def _flex_health_menu() -> FlexSendMessage:
+    """健康相談：3枚カード"""
+    bubbles = [
+        _make_card_bubble("🩺", "体の症状・不調",   "気になる症状を\nやさしく一緒に確認",   "体の症状について相談したいです"),
+        _make_card_bubble("💊", "薬・病院のこと",    "お薬の飲み方や\n近くの病院を案内",      "薬や病院について教えてください"),
+        _make_card_bubble("🏃", "運動・健康習慣",    "無理なく続けられる\n運動習慣のヒント",   "健康的な運動習慣を教えてください"),
+    ]
+    return FlexSendMessage(
+        alt_text="健康について相談しましょう",
+        contents={"type": "carousel", "contents": bubbles},
+        quick_reply=_build_quick_reply([_QR_BACK]),
+    )
+
+
+def _flex_recipe_menu() -> FlexSendMessage:
+    """食事・レシピ：3枚カード"""
+    bubbles = [
+        _make_card_bubble("🍳", "今日のレシピを提案",  "冷蔵庫の食材で\n作れるレシピを提案",    "今日のレシピを提案してください"),
+        _make_card_bubble("🥗", "健康的な食事",         "栄養バランスのよい\n食事アドバイス",     "健康的な食事について教えてください"),
+        _make_card_bubble("🏪", "近くのお店を探す",     "今開いている\nお近くのお店を案内",      "近くの飲食店を教えてください"),
+    ]
+    return FlexSendMessage(
+        alt_text="食事・レシピについて",
+        contents={"type": "carousel", "contents": bubbles},
+        quick_reply=_build_quick_reply([_QR_BACK]),
+    )
+
+
+def _flex_travel_menu() -> FlexSendMessage:
+    """旅行提案：3枚カード"""
+    bubbles = [
+        _make_card_bubble("🚃", "日帰り旅行",    "気軽に行ける\n日帰りプランを提案",       "日帰り旅行のプランを提案してください"),
+        _make_card_bubble("🏨", "1泊2日",        "温泉やグルメを楽しむ\nゆっくりプラン",   "1泊2日の旅行プランを提案してください"),
+        _make_card_bubble("✈️", "遠くへの旅",    "憧れの場所への\n旅行プランを提案",       "遠くへの旅行プランを提案してください"),
+    ]
+    return FlexSendMessage(
+        alt_text="旅行プランを提案します",
+        contents={"type": "carousel", "contents": bubbles},
+        quick_reply=_build_quick_reply([_QR_BACK]),
+    )
+
+
+def _get_showa_era_text(birthdate_str: str) -> str:
+    """生年月日文字列から昭和年代を計算して話題テキストを返す。"""
+    try:
+        # 「1950年1月1日」「1950-01-01」「1950/01/01」など複数フォーマット対応
+        import re as _re
+        m = _re.search(r'(\d{4})', birthdate_str or "")
+        birth_year = int(m.group(1)) if m else None
+    except Exception:
+        birth_year = None
+
+    if birth_year:
+        # 子ども時代の年代（10〜20歳ごろ）
+        childhood_year = birth_year + 15
+        # 昭和年に変換（昭和元年=1926年）
+        showa_year = childhood_year - 1925
+        if 1 <= showa_year <= 64:
+            era_label = f"昭和{showa_year}年ごろ"
+        elif childhood_year < 1926:
+            era_label = "大正・昭和初期"
+        else:
+            era_label = f"{childhood_year}年ごろ"
+        return (
+            f"懐かしい昭和の話をしましょう😊\n\n"
+            f"あなたが若いころ、{era_label}はどんな思い出がありますか？\n\n"
+            "・流行っていた歌や映画\n"
+            "・子どもの頃に遊んでいたこと\n"
+            "・思い出の食べ物やお店\n\n"
+            "ぜひ聞かせてください！"
+        )
+    return (
+        "懐かしい昭和の話をしましょう😊\n\n"
+        "あなたの子どもの頃、どんな思い出がありますか？\n\n"
+        "・流行っていた歌や映画\n"
+        "・遊んでいたこと\n"
+        "・思い出の食べ物やお店\n\n"
+        "ぜひ聞かせてください！"
+    )
+
+
 # ── 登録フロー ─────────────────────────────────────────
 
 def start_registration(user_id: str) -> TextSendMessage:
@@ -876,7 +984,7 @@ def _get_user(user_id: str) -> dict | None:
         return user_cache[user_id]
     result = (
         get_supabase().table("users")
-        .select("name, region, prefecture, city, is_paid")
+        .select("name, region, prefecture, city, is_paid, birthdate")
         .eq("line_user_id", user_id)
         .limit(1)
         .execute()
@@ -1812,7 +1920,58 @@ def handle_message(event):
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(
-                text="\u3054\u8cea\u554f\u3092\u3069\u3046\u305e\u3002\u4f55\u3067\u3082\u304a\u6c17\u8efd\u306b\u8074\u304b\u305b\u3066\u304f\u3060\u3055\u3044\uff01\U0001F604"
+                text="ご質問をどうぞ。何でもお気軽に聞かせてください！😊"
+            ),
+        )
+        return
+
+    # AIに相談（無料会員向け）
+    if msg == "AIに相談":
+        line_bot_api.reply_message(event.reply_token, _flex_ai_consult_menu())
+        return
+
+    # 健康相談
+    if msg == "健康相談":
+        line_bot_api.reply_message(event.reply_token, _flex_health_menu())
+        return
+
+    # 食事レシピ
+    if msg == "食事レシピ":
+        line_bot_api.reply_message(event.reply_token, _flex_recipe_menu())
+        return
+
+    # なつかしい昭和
+    if msg == "なつかしい昭和":
+        birthdate = (user_info or {}).get("birthdate", "")
+        text = _get_showa_era_text(birthdate)
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=text,
+                quick_reply=_build_quick_reply([_QR_BACK]),
+            ),
+        )
+        return
+
+    # 旅行提案
+    if msg == "旅行提案":
+        line_bot_api.reply_message(event.reply_token, _flex_travel_menu())
+        return
+
+    # 趣味生きがい
+    if msg == "趣味生きがい":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "どんなことに興味がありますか？😊\n\n"
+                    "・昔好きだったこと\n"
+                    "・やってみたいこと\n\n"
+                    "を教えてください！\n"
+                    "趣味・サークル・講座など\n"
+                    "ぴったりなものをご提案しますよ！"
+                ),
+                quick_reply=_build_quick_reply([_QR_BACK]),
             ),
         )
         return
