@@ -152,6 +152,9 @@ registration_states: dict[str, dict] = {}
 # 健康相談の途中状態: {user_id: str}
 # 値: "awaiting_symptom" | "awaiting_dept" | "awaiting_medicine" | "awaiting_side_effect"
 _health_states: dict[str, str] = {}
+# 食事レシピの途中状態: {user_id: dict}
+# step: "mood" | "ingredients" | "condition" | "step_by_step"
+_recipe_states: dict[str, dict] = {}
 
 # ユーザー情報キャッシュ: {user_id: {"name": str, "region": str} | None}
 user_cache: dict[str, dict | None] = {}
@@ -1028,17 +1031,180 @@ def _triage_symptoms(msg: str) -> TextSendMessage | None:
 
 
 def _flex_recipe_menu() -> FlexSendMessage:
-    """食事・レシピ：3枚カード"""
+    """食事・レシピ：4枚カード"""
     bubbles = [
-        _make_card_bubble("🍳", "今日のレシピを提案",  "冷蔵庫の食材で\n作れるレシピを提案",    "今日のレシピを提案してください"),
-        _make_card_bubble("🥗", "健康的な食事",         "栄養バランスのよい\n食事アドバイス",     "健康的な食事について教えてください"),
-        _make_card_bubble("🏪", "近くのお店を探す",     "今開いている\nお近くのお店を案内",      "近くの飲食店を教えてください"),
+        _make_card_bubble("🗓️", "今日の献立",       "冷蔵庫の食材から\n今日の夕食を提案",       "今日の献立", ""),
+        _make_card_bubble("💊", "体に合った食事",    "体の調子に合わせた\n食事を選びます",        "体に合った食事", ""),
+        _make_card_bubble("⚡", "簡単に済ませたい",  "パッと作れる\n時短レシピを提案",            "簡単料理", ""),
+        _make_card_bubble("🎉", "楽しむレシピ",      "記念日や気分に合わせた\n特別レシピを提案",  "楽しむレシピ", ""),
     ]
     return FlexSendMessage(
         alt_text="食事・レシピについて",
         contents={"type": "carousel", "contents": bubbles},
         quick_reply=_build_quick_reply([_QR_BACK]),
     )
+
+
+def _claude_recipe_list(context_type: str, user_input: str) -> list[dict]:
+    """Claude Haiku でレシピを3件生成してJSON配列で返す。"""
+    if context_type == "dinner":
+        prompt = f"食材「{user_input}」を使った夕食レシピを3つ提案してください。"
+    elif context_type == "health":
+        prompt = f"「{user_input}」の方に合った健康的な食事レシピを3つ提案してください。"
+    elif context_type == "quick":
+        prompt = f"「{user_input}」という条件で作れる時短・簡単レシピを3つ提案してください。"
+    else:  # enjoy
+        prompt = f"「{user_input}」向けの特別感のある料理レシピを3つ提案してください。"
+    prompt += (
+        "\n\n必ずJSON配列のみを返してください（説明不要）:\n"
+        '[{"name":"料理名","emoji":"絵文字1文字","desc":"2行の特徴説明（改行\\nで区切る）"},'
+        '{"name":"...","emoji":"...","desc":"..."},'
+        '{"name":"...","emoji":"...","desc":"..."}]'
+    )
+    try:
+        _ac = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        resp = _ac.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=400,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = resp.content[0].text.strip()
+        start, end = raw.find("["), raw.rfind("]") + 1
+        if 0 <= start < end:
+            return json.loads(raw[start:end])
+    except Exception as e:
+        logging.error("_claude_recipe_list error: %s", e)
+    return [
+        {"name": "シンプル炒め物", "emoji": "🍳", "desc": "手軽に作れる\n栄養満点の一品"},
+        {"name": "お味噌汁定食",   "emoji": "🍲", "desc": "ほっこり温まる\n和食の定番"},
+        {"name": "サラダごはん",   "emoji": "🥗", "desc": "さっぱり食べられる\n彩り豊かな一品"},
+    ]
+
+
+def _flex_recipe_carousel(context_type: str, user_input: str) -> FlexSendMessage:
+    """Claude Haiku で3枚レシピカルーセルを生成する"""
+    recipes = _claude_recipe_list(context_type, user_input)
+    bubbles = [
+        _make_card_bubble(
+            r.get("emoji", "🍳"),
+            r.get("name", "レシピ"),
+            r.get("desc", ""),
+            f"レシピ詳細:{r.get('name', 'レシピ')}",
+            "",
+        )
+        for r in recipes[:3]
+    ]
+    return FlexSendMessage(
+        alt_text="レシピを提案します",
+        contents={"type": "carousel", "contents": bubbles},
+        quick_reply=_build_quick_reply([
+            ("別の提案をお願い", "別のレシピを提案してください"),
+            _QR_BACK,
+        ]),
+    )
+
+
+def _claude_recipe_detail(recipe_name: str) -> str:
+    """Claude Haiku でレシピ詳細テキストを生成する"""
+    prompt = (
+        f"「{recipe_name}」のレシピを日本語で教えてください。\n\n"
+        "【材料（2人分）】と【作り方】に分けて、シンプルに書いてください。\n"
+        "作り方は番号付きで5ステップ以内にしてください。\n"
+        "高齢者向けに、わかりやすい言葉で書いてください。"
+    )
+    try:
+        _ac = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        resp = _ac.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return resp.content[0].text.strip()
+    except Exception as e:
+        logging.error("_claude_recipe_detail error: %s", e)
+        return f"【{recipe_name}】\n\nレシピの読み込みに失敗しました。\nもう一度お試しください。"
+
+
+def _parse_recipe_steps(detail: str) -> list[str]:
+    """レシピ詳細テキストから作り方のステップリストを抽出する"""
+    steps: list[str] = []
+    in_steps = False
+    for line in detail.split("\n"):
+        s = line.strip()
+        if not s:
+            continue
+        if "作り方" in s or "手順" in s:
+            in_steps = True
+            continue
+        if in_steps:
+            m = re.match(r'^[①②③④⑤⑥⑦⑧⑨⑩](.+)', s)
+            if m:
+                steps.append(m.group(1).strip())
+                continue
+            m2 = re.match(r'^(\d+)[\.．\)\）\s](.+)', s)
+            if m2:
+                steps.append(m2.group(2).strip())
+    return steps
+
+
+def _flex_recipe_detail_bubble(recipe_name: str, detail: str) -> dict:
+    """レシピ詳細カード（3ボタンフッター付き）"""
+    body_items: list = []
+    for line in detail.split("\n"):
+        s = line.strip()
+        if not s:
+            continue
+        weight = "bold" if (s.startswith("【") or s.startswith("■")) else "regular"
+        body_items.append({
+            "type": "text", "text": s,
+            "size": "sm", "color": _R_SUB_TEXT,
+            "wrap": True, "weight": weight,
+        })
+        if len(body_items) >= 14:
+            break
+    return {
+        "type": "bubble",
+        "size": "mega",
+        "header": {
+            "type": "box", "layout": "vertical", "paddingAll": "md",
+            "backgroundColor": _R_HEADER_BG,
+            "contents": [{
+                "type": "text", "text": recipe_name,
+                "weight": "bold", "size": "md",
+                "color": _R_HEADER_TEXT, "align": "center", "wrap": True,
+            }],
+        },
+        "body": {
+            "type": "box", "layout": "vertical",
+            "spacing": "sm", "paddingAll": "lg",
+            "backgroundColor": _R_BODY_BG,
+            "contents": body_items or [{"type": "text", "text": "レシピを読み込み中...", "size": "sm"}],
+        },
+        "footer": {
+            "type": "box", "layout": "vertical",
+            "spacing": "sm", "paddingAll": "md",
+            "backgroundColor": _R_BODY_BG,
+            "contents": [
+                {
+                    "type": "button",
+                    "action": {"type": "message", "label": "1ステップずつ教えて",
+                               "text": f"1ステップずつ教えて:{recipe_name}"},
+                    "style": "primary", "color": _R_BTN_COLOR, "height": "sm",
+                },
+                {
+                    "type": "button",
+                    "action": {"type": "message", "label": "別のレシピを選ぶ",
+                               "text": "別のレシピを提案してください"},
+                    "style": "secondary", "height": "sm",
+                },
+                {
+                    "type": "button",
+                    "action": {"type": "message", "label": "メニューに戻る", "text": "食事レシピ"},
+                    "style": "secondary", "height": "sm",
+                },
+            ],
+        },
+    }
 
 
 def _flex_travel_menu() -> FlexSendMessage:
@@ -2473,6 +2639,132 @@ def handle_message(event):
         line_bot_api.reply_message(event.reply_token, _flex_recipe_menu())
         return
 
+    # ── 食事レシピ サブメニュー（利用カウント不要）───────────────────────
+
+    if msg == "今日の献立":
+        _recipe_states[user_id] = {"step": "ingredients", "type": "dinner"}
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "冷蔵庫にある食材を\n教えてください😊\n\n"
+                    "例：鶏肉、キャベツ、じゃがいも\n\n"
+                    "ある食材を送っていただければ\n今夜の献立を提案しますよ！"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("肉系がある",         "鶏肉、玉ねぎ、にんじん"),
+                    ("野菜が多い",         "キャベツ、じゃがいも、卵"),
+                    ("魚系がある",         "鮭、大根、豆腐"),
+                    ("あり合わせで何とか", "残り野菜、卵、ご飯"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    if msg == "体に合った食事":
+        _recipe_states[user_id] = {"step": "condition", "type": "health"}
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "今日の体の調子を\n教えてください😊\n\n"
+                    "体の状態に合った\nおすすめ食事を提案します！"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("血圧が気になる",     "血圧が気になる"),
+                    ("血糖値が気になる",   "血糖値・糖尿病気味"),
+                    ("胃腸が弱い",         "胃腸が弱い・胃もたれ"),
+                    ("疲れが取れない",     "疲れが取れない・だるい"),
+                    ("元気をつけたい",     "もっと元気になりたい"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    if msg == "簡単料理":
+        _recipe_states[user_id] = {"step": "condition", "type": "quick"}
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "今日はどんな感じですか？😊\n\n"
+                    "状況に合わせた\nラクちんレシピを提案します！"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("5分で済ませたい",        "5分で作れるもの"),
+                    ("電子レンジだけで",       "電子レンジだけで作れるもの"),
+                    ("コンビニ食材で",         "コンビニの食材だけで"),
+                    ("一品だけでいい",         "おかず一品だけでいい"),
+                    ("残り物で何とかしたい",   "残り物・ありもので"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    if msg == "楽しむレシピ":
+        _recipe_states[user_id] = {"step": "condition", "type": "enjoy"}
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "どんな場面ですか？😊\n\n"
+                    "気分や場面に合わせた\n特別レシピを提案します！"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("記念日や特別な日",   "記念日・特別な日に"),
+                    ("家族と一緒に",       "家族みんなで食べたい"),
+                    ("友達を招待",         "友達をおもてなし"),
+                    ("お酒に合うもの",     "お酒に合うおつまみ"),
+                    ("季節の料理を作りたい", "旬の食材を使った料理"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    # 次のステップ（ステップバイステップ中の進行）
+    if msg == "次のステップ":
+        _rs = _recipe_states.get(user_id)
+        if _rs and _rs.get("step") == "step_by_step":
+            steps = _rs.get("steps", [])
+            current = _rs.get("current", 0) + 1
+            recipe_name = _rs.get("recipe_name", "レシピ")
+            if current >= len(steps):
+                _recipe_states.pop(user_id, None)
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    TextSendMessage(
+                        text=(
+                            f"「{recipe_name}」\n全ステップ完了です！\n\n"
+                            "おいしく作れましたか？😊\n"
+                            "ぜひ召し上がれ！"
+                        ),
+                        quick_reply=_build_quick_reply([
+                            ("もう一度作る",     f"レシピ詳細:{recipe_name}"),
+                            ("別のレシピを選ぶ", "別のレシピを提案してください"),
+                            _QR_BACK,
+                        ]),
+                    ),
+                )
+            else:
+                _recipe_states[user_id] = {**_rs, "current": current}
+                total = len(steps)
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    TextSendMessage(
+                        text=f"【ステップ {current + 1}/{total}】\n\n{steps[current]}",
+                        quick_reply=_build_quick_reply([
+                            ("次のステップ", "次のステップ"),
+                            ("最初から",     f"レシピ詳細:{recipe_name}"),
+                            ("途中でやめる", "食事レシピ"),
+                        ]),
+                    ),
+                )
+            return
+
     # なつかしい昭和
     if msg == "なつかしい昭和":
         birthdate = (user_info or {}).get("birthdate", "")
@@ -2666,6 +2958,90 @@ def handle_message(event):
                     ]),
                 ),
             )
+        return
+
+    # ── 食事レシピ（状態ベース・Claude呼び出し）────────────────────────
+    _rstate = _recipe_states.get(user_id)
+    if _rstate:
+        _rs_step = _rstate.get("step")
+
+        if _rs_step in ("ingredients", "condition"):
+            # ユーザーが食材／体調を入力 → レシピカルーセルを生成
+            ctx_type = _rstate.get("type", "dinner")
+            _recipe_states.pop(user_id, None)
+            try:
+                carousel = _flex_recipe_carousel(ctx_type, msg)
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    [
+                        TextSendMessage(text="少々お待ちください🍳\nぴったりのレシピを考えています..."),
+                        carousel,
+                    ],
+                )
+            except Exception as _e:
+                logging.error("recipe carousel error: %s", _e)
+                line_bot_api.reply_message(
+                    event.reply_token,
+                    TextSendMessage(
+                        text="レシピの取得に失敗しました😢\nもう一度お試しください",
+                        quick_reply=_build_quick_reply([("レシピを選ぶ", "食事レシピ"), _QR_BACK]),
+                    ),
+                )
+            return
+
+    # レシピ詳細（カルーセルのボタンから）
+    if msg.startswith("レシピ詳細:"):
+        recipe_name = msg[len("レシピ詳細:"):]
+        detail = _claude_recipe_detail(recipe_name)
+        bubble = _flex_recipe_detail_bubble(recipe_name, detail)
+        line_bot_api.reply_message(
+            event.reply_token,
+            FlexSendMessage(alt_text=recipe_name, contents=bubble),
+        )
+        return
+
+    # 1ステップずつ教えて（詳細カードのボタンから）
+    if msg.startswith("1ステップずつ教えて:"):
+        recipe_name = msg[len("1ステップずつ教えて:"):]
+        detail = _claude_recipe_detail(recipe_name)
+        steps = _parse_recipe_steps(detail)
+        if steps:
+            _recipe_states[user_id] = {
+                "step": "step_by_step",
+                "recipe_name": recipe_name,
+                "steps": steps,
+                "current": 0,
+            }
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(
+                    text=(
+                        f"「{recipe_name}」を\n一緒に作りましょう！😊\n\n"
+                        f"【ステップ 1/{len(steps)}】\n\n{steps[0]}"
+                    ),
+                    quick_reply=_build_quick_reply([
+                        ("次のステップ", "次のステップ"),
+                        ("やっぱりやめる", "食事レシピ"),
+                    ]),
+                ),
+            )
+        else:
+            # ステップを解析できなかった場合はテキストをそのまま表示
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(
+                    text=detail,
+                    quick_reply=_build_quick_reply([
+                        ("別のレシピを選ぶ", "別のレシピを提案してください"),
+                        _QR_BACK,
+                    ]),
+                ),
+            )
+        return
+
+    # 別のレシピを提案（直前の状態を見て再提案）
+    if msg == "別のレシピを提案してください":
+        line_bot_api.reply_message(event.reply_token, _flex_recipe_menu())
         return
 
     # ── 医療・法律の専門判断キーワード ──────────────────────────────
