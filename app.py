@@ -297,8 +297,8 @@ def _get_context_quick_reply(user_message: str) -> QuickReply:
         ] + back
     else:
         items = [
-            ("もう少し詳しく", "もう少し詳しく教えてください"),
-            ("他のことを聞く", "他のことを聞かせてください"),
+            ("もっと詳しく聞く", "もっと詳しく教えてください"),
+            ("他のことを聞く",   "他のことを聞かせてください"),
         ] + back
 
     return _build_quick_reply(items)
@@ -719,42 +719,42 @@ def _flex_upgrade_menu() -> FlexSendMessage:
     return FlexSendMessage(alt_text="有料会員のご案内", contents=bubble)
 
 
-def _flex_ai_direct_menu() -> FlexSendMessage:
+def _flex_ai_direct_menu(name: str = "") -> FlexSendMessage:
     """⑥AIに直接相談（有料会員向け）：ウェルカムカード"""
+    name_part = f"{name}さん、" if name else ""
     bubble = _retro_bubble(
-        title="なんでも直接聞いてください 🤖",
-        icon="",
-        desc="24時間いつでも、何でもお気軽に。\nあなた専任のコンシェルジュが\nすぐにお答えします。",
-        action={"type": "message", "label": "さっそく相談する", "text": "AIに相談したいことがあります"},
+        title="プレミアム会員専用 ✨",
+        icon="✨",
+        desc=(
+            f"{name_part}プレミアム会員専用の\n"
+            "AIコンシェルジュです✨\n\n"
+            "制限なし・24時間いつでも\n"
+            "何でもお気軽にどうぞ！"
+        ),
+        action={"type": "message", "label": "さっそく話しかける", "text": "話しかける"},
         size="mega",
     )
-    return FlexSendMessage(alt_text="なんでも直接聞いてください", contents=bubble)
+    return FlexSendMessage(alt_text="プレミアム会員専用AIコンシェルジュ", contents=bubble)
 
 
 # ── 新メニュー用フレックスメッセージ ───────────────────────────────
 
-def _flex_ai_consult_menu() -> FlexSendMessage:
-    """AIに相談：案内カード（無料会員向け）"""
-    bubble = _retro_bubble(
-        title="何でもお気軽にどうぞ 😊",
-        icon="🤖",
-        desc=(
-            "・健康のこと\n"
-            "・地元の情報\n"
-            "・生活の困りごと\n"
-            "・なんでも話しかけてください"
-        ),
-        action={"type": "message", "label": "話しかける", "text": "話しかける"},
-        size="mega",
-    )
+def _flex_ai_consult_first() -> FlexSendMessage:
+    """AIに相談・初回：3枚カード（どんなことを聞けるか紹介）"""
+    bubbles = [
+        _make_card_bubble("🏥", "健康・からだのこと",
+                          "体の症状・薬・病院・\n運動など何でも",
+                          "健康について相談したいです"),
+        _make_card_bubble("🏘️", "地元・生活のこと",
+                          "お店・行政・ゴミ出し・\nイベントなど",
+                          "地元の生活について教えてください"),
+        _make_card_bubble("💬", "なんでも話しかける",
+                          "困りごと・悩み・\n何でもどうぞ！",
+                          "話しかける"),
+    ]
     return FlexSendMessage(
-        alt_text="何でもお気軽にどうぞ",
-        contents=bubble,
-        quick_reply=_build_quick_reply([
-            ("話しかける",       "話しかける"),
-            ("よくある質問",     "よくある質問を教えてください"),
-            _QR_BACK,
-        ]),
+        alt_text="例えばこんなことを聞けます",
+        contents={"type": "carousel", "contents": bubbles},
     )
 
 
@@ -1641,6 +1641,21 @@ def _is_conversation_active(user_id: str) -> bool:
         return False
 
 
+def _has_message_history(user_id: str) -> bool:
+    """messagesテーブルに対象ユーザーの履歴があるか確認する。"""
+    try:
+        result = (
+            get_supabase().table("messages")
+            .select("id")
+            .eq("line_user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        return bool(result.data)
+    except Exception:
+        return False
+
+
 # ── Claude 返答 ────────────────────────────────────────
 
 def get_claude_reply(
@@ -1927,7 +1942,40 @@ def handle_message(event):
 
     # AIに相談（無料会員向け）
     if msg == "AIに相談":
-        line_bot_api.reply_message(event.reply_token, _flex_ai_consult_menu())
+        import random as _random
+        _name = (user_info or {}).get("name") or ""
+        _name_call = f"{_name}さん" if _name else "あなた"
+        if not _has_message_history(user_id):
+            # 初回利用
+            _welcome = (
+                f"{_name_call}、はじめまして！😊\n\n"
+                "何でも気軽に話しかけてください。\n"
+                "間違えても大丈夫ですよ！\n\n"
+                "例えばこんなことを聞けます👇"
+            )
+            line_bot_api.reply_message(
+                event.reply_token,
+                [TextSendMessage(text=_welcome), _flex_ai_consult_first()],
+            )
+        else:
+            # 2回目以降：ランダムウェルカム
+            _msgs = [
+                f"{_name_call}、今日もお待ちしてました😊 何でもどうぞ！",
+                f"{_name_call}、いらっしゃい！😊 今日はどんなことを話しましょうか？",
+                f"{_name_call}、こんにちは！😊 何でも気軽に聞いてくださいね",
+            ]
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(
+                    text=_random.choice(_msgs),
+                    quick_reply=_build_quick_reply([
+                        ("健康のこと",   "健康について相談したいです"),
+                        ("地元のこと",   "地元の情報を教えてください"),
+                        ("なんでも話す", "話しかける"),
+                        _QR_BACK,
+                    ]),
+                ),
+            )
         return
 
     # 健康相談
@@ -1978,30 +2026,74 @@ def handle_message(event):
 
     # ⑥ 会員登録（無料会員）/ AIに直接相談（有料会員）
     if msg in ("会員登録", "AIに直接相談"):
-        try:
-            paid_result = get_supabase().table("users").select("is_paid").eq("line_user_id", user_id).execute()
-            is_paid = paid_result.data[0].get("is_paid") if paid_result.data else False
-        except Exception:
-            is_paid = False
-        qr = _build_quick_reply([
-            ("申し込む",       "有料会員の申し込み方法を教えてください"),
-            ("詳しく聞く",     "有料会員の詳細を教えてください"),
-            _QR_BACK,
-        ])
-        flex_msg = _flex_ai_direct_menu() if is_paid else _flex_upgrade_menu()
-        flex_msg.quick_reply = qr
+        is_paid = bool((user_info or {}).get("is_paid"))
+        if is_paid:
+            _name = (user_info or {}).get("name") or ""
+            flex_msg = _flex_ai_direct_menu(_name)
+            flex_msg.quick_reply = _build_quick_reply([
+                ("健康のこと",   "健康について相談したいです"),
+                ("地元のこと",   "地元の情報を教えてください"),
+                ("なんでも話す", "話しかける"),
+                _QR_BACK,
+            ])
+        else:
+            flex_msg = _flex_upgrade_menu()
+            flex_msg.quick_reply = _build_quick_reply([
+                ("申し込む",   "有料会員の申し込み方法を教えてください"),
+                ("詳しく聞く", "有料会員の詳細を教えてください"),
+                _QR_BACK,
+            ])
         line_bot_api.reply_message(event.reply_token, flex_msg)
+        return
+
+    # ── 緊急・危険キーワード（利用カウントを消費しない） ─────────────
+    _EMERGENCY_KEYWORDS = {"助けて", "倒れた", "救急", "死にたい", "死にそう", "意識がない", "119", "110"}
+    if any(kw in msg for kw in _EMERGENCY_KEYWORDS):
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "すぐに119番か110番に\n"
+                    "電話してください！\n\n"
+                    "もし電話が難しければ\n"
+                    "近くの人を呼んでください"
+                )
+            ),
+        )
+        return
+
+    # ── 孤独・悲しいキーワード（利用カウントを消費しない） ───────────
+    _LONELINESS_KEYWORDS = {"寂しい", "つらい", "悲しい", "一人ぼっち", "孤独", "誰もいない"}
+    if any(kw in msg for kw in _LONELINESS_KEYWORDS):
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "そうですか、つらいですね😢\n"
+                    "もう少し話してみませんか？\n"
+                    "私はいつでもここにいますよ"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("話を聞いてほしい",   "もう少し話を聞いてほしいです"),
+                    ("元気が出る話をして", "元気が出る話をしてください"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
         return
 
     # 利用回数チェック（is_paid なら通過、bonus_count → daily_count の順で消費）
     if not _check_and_increment_usage(user_id):
         _LIMIT_TEXT = (
-            f"本日の無料回数（{FREE_DAILY_LIMIT}回）を使い切りました😔\n\n"
-            "明日またお使いいただけます。\n"
-            "お友達を紹介すると、5回追加でプレゼント🎁\n\n"
-            "「友達に紹介」ボタンから紹介コードを確認できます！"
+            f"今日はたくさん話せましたね😊\n"
+            "また明日も待っています！\n\n"
+            "お友達を紹介すると\n"
+            "5回追加されますよ🎁"
         )
-        _LIMIT_QR = _build_quick_reply([("友達に紹介", "友達に紹介")])
+        _LIMIT_QR = _build_quick_reply([
+            ("友達に紹介する", "友達に紹介"),
+            _QR_BACK,
+        ])
         # reply_token で即返信し、失敗した場合は push_message で確実に届ける
         try:
             line_bot_api.reply_message(
@@ -2021,12 +2113,40 @@ def handle_message(event):
     # 会話継続中かどうかを判定（直前がAIの返信かつ30分以内）
     in_conversation = _is_conversation_active(user_id)
 
+    # ── 医療・法律の専門判断キーワード ──────────────────────────────
+    _EXPERT_PATTERNS = re.compile(
+        r'診断|手術|訴訟|裁判|遺言|相続|契約書|保険金|投資|詐欺被害'
+    )
+    if _EXPERT_PATTERNS.search(msg):
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "専門の先生に相談するのが\n"
+                    "一番安心ですよ😊\n\n"
+                    "一緒に相談先を探しましょうか？"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("相談先を探す", "相談できる窓口を教えてください"),
+                    ("他のことを聞く", "他のことを聞かせてください"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
     # FAQ直接返信チェック（会話継続中はスキップして文脈を維持）
     # FlexSendMessage はリッチメニューボタン経由のみ表示。通常会話はテキスト返答のみ。
+    _FAQ_QR = _build_quick_reply([
+        ("もっと詳しく聞く", "もっと詳しく教えてください"),
+        ("他のことを聞く",   "他のことを聞かせてください"),
+        _QR_BACK,
+    ])
     if not in_conversation:
         try:
             faq_msg = _faq_direct_reply(user_message, user_info)
             if faq_msg is not None and isinstance(faq_msg, TextSendMessage):
+                faq_msg.quick_reply = _FAQ_QR
                 line_bot_api.reply_message(
                     event.reply_token,
                     faq_msg,
