@@ -645,24 +645,56 @@ def _flex_search_menu() -> FlexSendMessage:
 
 
 def _flex_know_menu() -> FlexSendMessage:
-    """③知る：ナビカード＋3カード"""
-    bubbles = [
-        _retro_nav_bubble("ショートカット", [
-            ("明日の天気は？",     "明日の天気を教えてください"),
-            ("粗大ゴミの出し方",   "粗大ゴミの出し方を教えてください"),
-            ("もっと見る",         "地域情報をもっと教えてください"),
-            ("🏠 最初に戻る",      "最初に戻る"),
-        ]),
-        _make_card_bubble("⛅", "今日の天気", "雨・気温・風など\n今日の天気を確認",
-                          "今日の天気を教えてください", "", _card_icon("weather.png")),
-        _make_card_bubble("🗑️", "ゴミの収集日", "燃えるゴミ・資源ゴミ\n粗大ゴミの出し方も",
-                          "ゴミの収集日を教えてください", "", _card_icon("trash.png")),
-        _make_card_bubble("🎉", "街のイベント", "近くのイベントや\n季節の行事を紹介",
-                          "近くの街のイベントを教えてください", "", _card_icon("event.png")),
-    ]
+    """③知る：7ボタン1バブル（ショートカットメニュー）"""
+    _BTN_COLOR = "#4A2C0A"
+
+    def _btn(label: str, text: str) -> dict:
+        return {
+            "type": "button",
+            "style": "primary",
+            "color": _BTN_COLOR,
+            "height": "sm",
+            "margin": "sm",
+            "action": {"type": "message", "label": label, "text": text},
+        }
+
+    bubble = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#4A2C0A",
+            "paddingAll": "md",
+            "contents": [{
+                "type": "text",
+                "text": "何について知りたいですか？😊",
+                "color": "#F5E6A3",
+                "weight": "bold",
+                "size": "md",
+                "wrap": True,
+                "align": "center",
+            }],
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#F5E6A3",
+            "paddingAll": "md",
+            "spacing": "none",
+            "contents": [
+                _btn("📰 今日のニュース",    "今日のニュース"),
+                _btn("🏥 健康・医療の知識",  "健康知識を知る"),
+                _btn("💴 お金・年金・制度",  "お金制度を知る"),
+                _btn("⛅ 天気・季節の情報",  "天気を知る"),
+                _btn("📚 歴史・雑学",        "歴史雑学を知る"),
+                _btn("🎉 地域のイベント",    "地域イベントを知る"),
+                _btn("💡 なんでも知る",      "なんでも知る"),
+            ],
+        },
+    }
     return FlexSendMessage(
-        alt_text="何を知りたいですか？",
-        contents={"type": "carousel", "contents": bubbles},
+        alt_text="何について知りたいですか？😊",
+        contents=bubble,
     )
 
 
@@ -2979,6 +3011,200 @@ def handle_message(event):
     # ③ 知る
     if msg == "知る":
         line_bot_api.reply_message(event.reply_token, _flex_know_menu())
+        return
+
+    # 知る：今日のニュース（Google News RSS、APIコストゼロ）
+    if msg == "今日のニュース":
+        _pref, _city = _user_location(user_info)
+
+        def _news_process(uid, uinfo, r_token, pref, city):
+            try:
+                items = _fetch_local_news(pref, city)
+                if items:
+                    lines = ["📰 今日のニュースをお届けします😊\n"]
+                    for i, it in enumerate(items, 1):
+                        lines.append(f"【{i}】{it['title']}")
+                    lines.append("\n詳しくはLINEの「今日の情報」でご覧ください😊")
+                    reply_text = "\n".join(lines)
+                else:
+                    reply_text = "ニュースを取得できませんでした😢\nしばらくしてからもう一度お試しください"
+                qr = _build_quick_reply([
+                    ("もっとニュースを見る", "今日のニュース"),
+                    ("地域のイベントは？",   "地域イベントを知る"),
+                    _QR_BACK,
+                ])
+                try:
+                    line_bot_api.reply_message(r_token, TextSendMessage(text=reply_text, quick_reply=qr))
+                except Exception:
+                    safe_push_message(uid, [TextSendMessage(text=reply_text, quick_reply=qr)], uinfo)
+            except Exception as e:
+                logging.exception("news_process error: %s", e)
+
+        threading.Thread(
+            target=_news_process,
+            args=(user_id, user_info, event.reply_token, _pref, _city),
+            daemon=True,
+        ).start()
+        return
+
+    # 知る：今日の天気（OpenWeatherMap）
+    if msg == "天気を知る":
+        _pref, _city = _user_location(user_info)
+
+        def _weather_process(uid, uinfo, r_token, pref, city):
+            try:
+                w = _fetch_weather(pref, city)
+                if w.get("error"):
+                    reply_text = (
+                        "天気情報を取得できませんでした😢\n"
+                        "お住まいの地域を登録すると\n天気をお知らせできますよ😊"
+                    )
+                else:
+                    location = city or pref or "ご自宅付近"
+                    reply_text = (
+                        f"⛅ {location}の今日の天気です😊\n\n"
+                        f"{w['icon_emoji']} {w['description']}\n"
+                        f"🌡️ 最高{w['temp_max']}℃ / 最低{w['temp_min']}℃\n"
+                        f"🌂 降水確率 {w['rain_prob']}%\n"
+                        f"💨 風速 {w['wind_speed']}m/s\n\n"
+                        f"👕 服装：{w['clothes']}\n"
+                        f"☂️ 傘：{w['umbrella']}"
+                    )
+                qr = _build_quick_reply([
+                    ("明日の天気も知りたい", "明日の天気を教えてください"),
+                    ("ニュースを見る",       "今日のニュース"),
+                    _QR_BACK,
+                ])
+                try:
+                    line_bot_api.reply_message(r_token, TextSendMessage(text=reply_text, quick_reply=qr))
+                except Exception:
+                    safe_push_message(uid, [TextSendMessage(text=reply_text, quick_reply=qr)], uinfo)
+            except Exception as e:
+                logging.exception("weather_process error: %s", e)
+
+        threading.Thread(
+            target=_weather_process,
+            args=(user_id, user_info, event.reply_token, _pref, _city),
+            daemon=True,
+        ).start()
+        return
+
+    # 知る：歴史・雑学（昭和今日は何の日へ委譲）
+    if msg == "歴史雑学を知る":
+        _name  = (user_info or {}).get("name") or ""
+        _birth = (user_info or {}).get("birthdate", "")
+        _era   = _get_era_from_birthdate(_birth)
+        _today = datetime.now()
+
+        def _history_process(uid, uinfo, r_token, name, era, t):
+            try:
+                prompt = (
+                    f"今日は{t.month}月{t.day}日です。\n"
+                    "昭和時代（1926〜1989年）に起きた、この日（または近い日）の出来事を1つ選んで紹介してください。\n"
+                    "以下の形式で答えてください（マークダウン禁止）：\n"
+                    f"「今日（{t.month}月{t.day}日）は昭和の歴史的な日ですよ😊\n\n"
+                    "📅 昭和○○年○月○日\n○○がありました！\n\n"
+                    f"{name}さんはあの頃何をしていましたか？」"
+                    if name else
+                    f"「今日（{t.month}月{t.day}日）は昭和の歴史的な日ですよ😊\n\n"
+                    "📅 昭和○○年○月○日\n○○がありました！\n\n"
+                    "あの頃どんな思い出がありますか？」"
+                )
+                response = anthropic_client.messages.create(
+                    model=SHOWA_MODEL,
+                    max_tokens=400,
+                    system=SHOWA_SYSTEM_PROMPT,
+                    messages=[{"role": "user", "content": prompt}],
+                    timeout=API_TIMEOUT,
+                )
+                reply_text = next(
+                    (b.text for b in response.content if b.type == "text"),
+                    "今日も昭和の記念日かもしれませんよ😊",
+                )
+                reply_text = re.sub(r'\*\*(.+?)\*\*', r'\1', reply_text)
+                reply_text = re.sub(r'\*(.+?)\*',     r'\1', reply_text)
+                reply_text = re.sub(r'^#{1,6}\s+',    '',    reply_text, flags=re.MULTILINE)
+                qr = _build_quick_reply([
+                    ("思い出を話す",       "思い出を話す"),
+                    ("別の出来事を教えて", "歴史雑学を知る"),
+                    ("昭和の歌を聴く",     "昭和の歌"),
+                    _QR_BACK,
+                ])
+                try:
+                    line_bot_api.reply_message(r_token, TextSendMessage(text=reply_text, quick_reply=qr))
+                except Exception:
+                    safe_push_message(uid, [TextSendMessage(text=reply_text, quick_reply=qr)], uinfo)
+            except Exception as e:
+                logging.exception("history_process error: %s", e)
+
+        threading.Thread(
+            target=_history_process,
+            args=(user_id, user_info, event.reply_token, _name, _era, _today),
+            daemon=True,
+        ).start()
+        return
+
+    # 知る：健康知識・お金制度・地域イベント（FAQジャンル検索）
+    _KNOW_FAQ_MAP = {
+        "健康知識を知る":   ("健康・病院",  "健康や病気の予防・知識について",   "健康習慣・予防"),
+        "お金制度を知る":   ("お金・年金",  "年金や介護保険・給付金について",   "年金について教えてください"),
+        "地域イベントを知る": ("地元情報",  "地域のイベントや行事について",     "近くのイベントを教えてください"),
+    }
+    if msg in _KNOW_FAQ_MAP:
+        genre, fallback_intro, fallback_btn = _KNOW_FAQ_MAP[msg]
+        pref, city = _user_location(user_info)
+        cols = "question, answer, answer_type"
+        try:
+            rows = _faq_genre_search(genre, ["text"], cols, pref, city, limit=1)
+            if rows and rows[0].get("answer"):
+                reply_text = rows[0]["answer"]
+                qr = _build_quick_reply([
+                    ("もっと知りたい", fallback_btn),
+                    ("別のことを知る", "知る"),
+                    _QR_BACK,
+                ])
+            else:
+                reply_text = (
+                    f"{fallback_intro}ですね😊\n"
+                    "どんなことが知りたいですか？\n"
+                    "気軽に話しかけてくださいね！"
+                )
+                qr = _build_quick_reply([
+                    ("詳しく教えて", fallback_btn),
+                    ("別のことを知る", "知る"),
+                    _QR_BACK,
+                ])
+        except Exception as e:
+            logging.exception("know_faq error: %s", e)
+            reply_text = f"{fallback_intro}ですね😊\n何でも気軽に聞いてくださいね！"
+            qr = _build_quick_reply([("別のことを知る", "知る"), _QR_BACK])
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(text=reply_text, quick_reply=qr),
+        )
+        return
+
+    # 知る：なんでも知る（フリー入力誘導）
+    if msg == "なんでも知る":
+        _name = (user_info or {}).get("name") or ""
+        name_call = f"{_name}さん" if _name else "あなた"
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    f"{name_call}、何でも聞いてくださいね😊\n\n"
+                    "知りたいこと・気になること\n"
+                    "なんでもOKですよ！"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("今日の天気",       "天気を知る"),
+                    ("今日のニュース",   "今日のニュース"),
+                    ("昭和の豆知識",     "歴史雑学を知る"),
+                    ("地域のイベント",   "地域イベントを知る"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
         return
 
     # ④ つながる
