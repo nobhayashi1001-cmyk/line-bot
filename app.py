@@ -163,6 +163,8 @@ _showa_sessions: dict[str, dict] = {}
 _hobby_states: dict[str, dict] = {}
 # 動画・音楽の途中状態: {user_id: {"step": str}}
 _music_states: dict[str, dict] = {}
+# 旅行相談の途中状態: {user_id: {"type": str, "fitness": str, "budget": str}}
+_travel_states: dict[str, dict] = {}
 
 # ユーザー情報キャッシュ: {user_id: {"name": str, "region": str} | None}
 user_cache: dict[str, dict | None] = {}
@@ -1245,9 +1247,9 @@ def _flex_recipe_detail_bubble(recipe_name: str, detail: str) -> dict:
 def _flex_travel_menu() -> FlexSendMessage:
     """旅行提案：3枚カード"""
     bubbles = [
-        _make_card_bubble("🚃", "日帰り旅行",    "気軽に行ける\n日帰りプランを提案",       "日帰り旅行のプランを提案してください"),
-        _make_card_bubble("🏨", "1泊2日",        "温泉やグルメを楽しむ\nゆっくりプラン",   "1泊2日の旅行プランを提案してください"),
-        _make_card_bubble("✈️", "遠くへの旅",    "憧れの場所への\n旅行プランを提案",       "遠くへの旅行プランを提案してください"),
+        _make_card_bubble("🚃", "日帰り旅行",    "気軽に行ける\n日帰りプランを提案",       "旅行:日帰り", ""),
+        _make_card_bubble("🏨", "1泊2日",        "温泉やグルメを楽しむ\nゆっくりプラン",   "旅行:1泊2日", ""),
+        _make_card_bubble("🏘️", "近場でお出かけ", "地元・近場で楽しめる\nスポットを提案",   "旅行:近場", ""),
     ]
     return FlexSendMessage(
         alt_text="旅行プランを提案します",
@@ -2754,6 +2756,7 @@ def handle_message(event):
         _showa_gender_pending.discard(user_id)
         _hobby_states.pop(user_id, None)     # 趣味セッションをクリア
         _music_states.pop(user_id, None)     # 動画・音楽セッションをクリア
+        _travel_states.pop(user_id, None)    # 旅行セッションをクリア
         _clear_history(user_id)
         line_bot_api.reply_message(
             event.reply_token,
@@ -3848,7 +3851,67 @@ def handle_message(event):
 
     # 旅行提案
     if msg == "旅行提案":
+        _travel_states.pop(user_id, None)
         line_bot_api.reply_message(event.reply_token, _flex_travel_menu())
+        return
+
+    # 旅行: タイプ選択 → 体力確認
+    if msg.startswith("旅行:"):
+        travel_type = msg[3:].strip()  # 日帰り / 1泊2日 / 近場
+        _travel_states[user_id] = {"type": travel_type}
+        type_label = {"日帰り": "日帰り旅行", "1泊2日": "1泊2日の旅", "近場": "近場のお出かけ"}.get(travel_type, travel_type)
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=f"{type_label}ですね😊\n体の調子はどうですか？",
+                quick_reply=_build_quick_reply([
+                    ("バリバリ動ける",     "旅行体力:バリバリ動ける"),
+                    ("少し疲れやすい",     "旅行体力:少し疲れやすい"),
+                    ("なるべくゆっくり",   "旅行体力:なるべくゆっくり"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    # 旅行: 体力確認 → 予算確認
+    if msg.startswith("旅行体力:"):
+        fitness = msg[5:].strip()
+        st = _travel_states.get(user_id, {})
+        st["fitness"] = fitness
+        _travel_states[user_id] = st
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="予算はどのくらいですか？",
+                quick_reply=_build_quick_reply([
+                    ("3,000円以内",   "旅行予算:3000円以内"),
+                    ("5,000円くらい", "旅行予算:5000円くらい"),
+                    ("気にしない",     "旅行予算:気にしない"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    # 旅行: 予算確認 → 目的確認
+    if msg.startswith("旅行予算:"):
+        budget = msg[5:].strip()
+        st = _travel_states.get(user_id, {})
+        st["budget"] = budget
+        _travel_states[user_id] = st
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="どんな目的ですか？",
+                quick_reply=_build_quick_reply([
+                    ("自然・景色を楽しむ",   "旅行目的:自然・景色"),
+                    ("温泉・グルメを楽しむ", "旅行目的:温泉・グルメ"),
+                    ("名所・歴史を巡る",     "旅行目的:名所・歴史"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
         return
 
     # ── 趣味・生きがい（メニュー・状態セット、Claude不要）─────────────────
@@ -4342,6 +4405,60 @@ def handle_message(event):
 
     # 会話継続中かどうかを判定（直前がAIの返信かつ30分以内）
     in_conversation = _is_conversation_active(user_id)
+
+    # ── 旅行: 目的確認 → Claude Sonnet でプラン提案 ─────────────────────
+    if msg.startswith("旅行目的:"):
+        purpose = msg[5:].strip()
+        st = _travel_states.pop(user_id, {})
+        travel_type = st.get("type", "日帰り")
+        fitness     = st.get("fitness", "普通")
+        budget      = st.get("budget", "気にしない")
+        _name = (user_info or {}).get("name") or ""
+        name_call = f"{_name}さん" if _name else "あなた"
+        region = (user_info or {}).get("region") or (user_info or {}).get("prefecture") or "神奈川県"
+
+        def _travel_process(uid, r_token, ttype, fit, bgt, purp, nm, reg):
+            try:
+                system = (
+                    "あなたは旅行アドバイザーです。高齢者（60〜80代）向けに、"
+                    "やさしい言葉で具体的な旅行プランを提案してください。\n"
+                    "・マークダウン記法を使わない\n"
+                    "・300字以内でまとめる\n"
+                    "・昭和ゆかりのスポットや歴史的な場所があれば必ず1つ触れる"
+                )
+                prompt = (
+                    f"{nm}さんへのおすすめ旅行プランを提案してください。\n"
+                    f"・旅行タイプ：{ttype}\n"
+                    f"・体力：{fit}\n"
+                    f"・予算：{bgt}\n"
+                    f"・目的：{purp}\n"
+                    f"・出発地域：{reg}"
+                )
+                resp = anthropic_client.messages.create(
+                    model=SHOWA_MODEL,
+                    max_tokens=600,
+                    system=system,
+                    messages=[{"role": "user", "content": prompt}],
+                    timeout=API_TIMEOUT,
+                )
+                reply_text = resp.content[0].text.strip()
+                qr = _build_quick_reply([
+                    ("昭和ゆかりの場所も見る", "なつかしい昭和"),
+                    ("別のプランを見る",       "旅行提案"),
+                    _QR_BACK,
+                ])
+                safe_reply_message(r_token, TextSendMessage(text=reply_text, quick_reply=qr), uid)
+            except Exception as e:
+                logging.exception("travel_process error: %s", e)
+                safe_reply_message(r_token, TextSendMessage(text="プランの作成中にエラーが発生しました。もう一度お試しください。"), uid)
+
+        t = threading.Thread(
+            target=_travel_process,
+            args=(user_id, event.reply_token, travel_type, fitness, budget, purpose, _name, region),
+            daemon=True,
+        )
+        t.start()
+        return
 
     # ── 昭和モード継続 ────────────────────────────────────────────────
     # 「思い出を話す」または昭和セッション中の自由発話は Claude Sonnet で処理
