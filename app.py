@@ -699,24 +699,56 @@ def _flex_know_menu() -> FlexSendMessage:
 
 
 def _flex_connect_menu() -> FlexSendMessage:
-    """④つながる：ナビカード＋3カード"""
-    bubbles = [
-        _retro_nav_bubble("ショートカット", [
-            ("散歩仲間",       "散歩仲間を探したいです"),
-            ("ゲートボール",   "ゲートボールの情報を教えてください"),
-            ("昔の話をする",   "なつかしい昭和"),
-            ("🏠 最初に戻る",  "最初に戻る"),
-        ]),
-        _make_card_bubble("🌸", "趣味のサークル", "手芸・園芸・将棋など\n同じ趣味の仲間を",
-                          "趣味のサークルを探したいです", "", _card_icon("circle.png")),
-        _make_card_bubble("👥", "地域の集まり", "町内会・老人会など\n地域の輪に加わろう",
-                          "地域の集まりについて教えてください", "", _card_icon("community.png")),
-        _make_card_bubble("📻", "昭和の思い出話", "懐かしい話を一緒に\n楽しみましょう",
-                          "なつかしい昭和", "", _card_icon("retro.png")),
-    ]
+    """④つながる：7ボタン1バブル（ショートカットメニュー）"""
+    _BTN_COLOR = "#4A2C0A"
+
+    def _btn(label: str, text: str) -> dict:
+        return {
+            "type": "button",
+            "style": "primary",
+            "color": _BTN_COLOR,
+            "height": "sm",
+            "margin": "sm",
+            "action": {"type": "message", "label": label, "text": text},
+        }
+
+    bubble = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#4A2C0A",
+            "paddingAll": "md",
+            "contents": [{
+                "type": "text",
+                "text": "どなたと繋がりますか？😊",
+                "color": "#F5E6A3",
+                "weight": "bold",
+                "size": "md",
+                "wrap": True,
+                "align": "center",
+            }],
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#F5E6A3",
+            "paddingAll": "md",
+            "spacing": "none",
+            "contents": [
+                _btn("👨‍👩‍👧 家族に連絡する",      "家族に連絡する"),
+                _btn("🎁 友達に紹介する",          "友達に紹介する"),
+                _btn("🌸 仲間・サークルを探す",    "仲間サークルを探す"),
+                _btn("🤝 ボランティアに参加",      "ボランティアに参加する"),
+                _btn("📞 相談窓口に繋がる",        "相談窓口に繋がる"),
+                _btn("🎬 SNS・動画を楽しむ",       "SNS動画を楽しむ"),
+                _btn("💬 なんでも繋がる",          "なんでも繋がる"),
+            ],
+        },
+    }
     return FlexSendMessage(
-        alt_text="つながりを広げましょう",
-        contents={"type": "carousel", "contents": bubbles},
+        alt_text="どなたと繋がりますか？😊",
+        contents=bubble,
     )
 
 
@@ -3210,6 +3242,174 @@ def handle_message(event):
     # ④ つながる
     if msg == "つながる":
         line_bot_api.reply_message(event.reply_token, _flex_connect_menu())
+        return
+
+    # 繋がる：家族に連絡する
+    if msg == "家族に連絡する":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "LINEで家族に連絡してみましょう！😊\n\n"
+                    "メッセージを送る・\nビデオ通話をする方法を\n"
+                    "お教えしますよ！\n\n"
+                    "どちらをお知りになりたいですか？"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("メッセージの送り方",   "LINEメッセージの送り方を教えて"),
+                    ("ビデオ通話のかけ方",   "LINEビデオ通話のかけ方を教えて"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    if msg == "LINEメッセージの送り方を教えて":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "メッセージの送り方ですね😊\n\n"
+                    "① LINEを開いて\n"
+                    "   「トーク」をタップします\n\n"
+                    "② 連絡したい家族の名前を\n"
+                    "   タップします\n\n"
+                    "③ 画面の下に白いボックスが\n"
+                    "   あります。そこに文字を\n"
+                    "   入力してください\n\n"
+                    "④ 緑の「→」ボタンをタップすると\n"
+                    "   メッセージが送れますよ😊"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("ビデオ通話の方法も知りたい", "LINEビデオ通話のかけ方を教えて"),
+                    ("文字の入力が難しい",         "スマホの文字入力を教えてください"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    if msg == "LINEビデオ通話のかけ方を教えて":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "ビデオ通話のかけ方ですね😊\n\n"
+                    "① LINEを開いて\n"
+                    "   「トーク」をタップします\n\n"
+                    "② 通話したい家族の名前を\n"
+                    "   タップします\n\n"
+                    "③ 右上の「電話マーク」を\n"
+                    "   タップします\n\n"
+                    "④「ビデオ通話」を選ぶと\n"
+                    "   顔を見ながら話せますよ😊\n\n"
+                    "カメラが映らない時は\n"
+                    "スマホを明るい場所に\n"
+                    "移動してみてくださいね！"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("メッセージの送り方も知りたい", "LINEメッセージの送り方を教えて"),
+                    ("うまくできなかった",           "LINEのビデオ通話がうまくできません"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    # 繋がる：友達に紹介する（既存「友達に紹介」へ委譲）
+    if msg == "友達に紹介する":
+        referral_code = _get_referral_code(user_id)
+        line_bot_api.reply_message(event.reply_token, _flex_referral_menu(referral_code))
+        return
+
+    # 繋がる：仲間・サークルを探す（既存サークルフローへ委譲）
+    if msg == "仲間サークルを探す":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="仲間やサークルを探しましょう😊\nどちらをお探しですか？",
+                quick_reply=_build_quick_reply([
+                    ("趣味のサークル",       "サークル・クラブを探す"),
+                    ("ボランティア仲間",     "ボランティアを探す"),
+                    ("地域の活動",           "地域活動を探す"),
+                    ("教室・習い事仲間",     "教室仲間を探す"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    # 繋がる：ボランティアに参加（既存ボランティアフローへ委譲）
+    if msg == "ボランティアに参加する":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="素晴らしいですね😊\nどんな活動に興味がありますか？",
+                quick_reply=_build_quick_reply([
+                    ("子どもに関わる活動",     "ボランティア選択:子どもに関わる活動"),
+                    ("高齢者支援",             "ボランティア選択:高齢者支援"),
+                    ("環境・清掃活動",         "ボランティア選択:環境・清掃活動"),
+                    ("地域のお祭り・イベント", "ボランティア選択:地域のお祭り・イベント"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    # 繋がる：相談窓口に繋がる
+    if msg == "相談窓口に繋がる":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "いつでも話を聞いてくれる\n窓口がありますよ😊\n\n"
+                    "どんなことでお困りですか？"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("気持ち・こころの相談", "相談窓口を教えて"),
+                    ("介護・福祉の相談",     "介護や福祉の相談窓口を教えてください"),
+                    ("お金・生活の相談",     "生活費や福祉の相談窓口を教えてください"),
+                    ("かかりつけ医を探す",   "近くの病院を探す"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    # 繋がる：SNS・動画を楽しむ（既存「動画・音楽」へ委譲）
+    if msg == "SNS動画を楽しむ":
+        _name = (user_info or {}).get("name") or ""
+        name_part = f"{_name}さん、" if _name else ""
+        line_bot_api.reply_message(
+            event.reply_token,
+            [
+                TextSendMessage(text=f"{name_part}SNSや動画を楽しみましょう😊"),
+                _flex_music_menu(),
+            ],
+        )
+        return
+
+    # 繋がる：なんでも繋がる（フリー入力誘導）
+    if msg == "なんでも繋がる":
+        _name = (user_info or {}).get("name") or ""
+        name_call = f"{_name}さん" if _name else "あなた"
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    f"{name_call}、誰かと繋がりたいですね😊\n\n"
+                    "どんなことを\nお話ししましょうか？\n"
+                    "気軽に話しかけてくださいね！"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("家族と話したい",       "家族に連絡する"),
+                    ("仲間を探したい",       "仲間サークルを探す"),
+                    ("昭和の思い出話",       "なつかしい昭和"),
+                    ("友達に紹介したい",     "友達に紹介する"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
         return
 
     # ⑤ 友達に紹介
