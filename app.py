@@ -161,6 +161,8 @@ _showa_gender_pending: set[str] = set()
 _showa_sessions: dict[str, dict] = {}
 # 趣味・生きがいの途中状態: {user_id: {"step": str, "data": dict}}
 _hobby_states: dict[str, dict] = {}
+# 動画・音楽の途中状態: {user_id: {"step": str}}
+_music_states: dict[str, dict] = {}
 
 # ユーザー情報キャッシュ: {user_id: {"name": str, "region": str} | None}
 user_cache: dict[str, dict | None] = {}
@@ -1580,6 +1582,79 @@ def _flex_hobby_menu(name: str) -> FlexSendMessage:
     )
 
 
+def _youtube_carousel(
+    items: list[tuple[str, str, str]],
+    btn_label: str = "YouTubeで開く",
+) -> FlexSendMessage:
+    """YouTube検索URLリンクカルーセル3枚を生成する。
+    items: [(タイトル, 説明文, 検索クエリ), ...]
+    """
+    import urllib.parse
+    bubbles = []
+    for title, desc, query in items[:3]:
+        yt_url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}"
+        bubbles.append({
+            "type": "bubble",
+            "size": "kilo",
+            "header": {
+                "type": "box", "layout": "vertical", "paddingAll": "md",
+                "backgroundColor": _R_HEADER_BG,
+                "contents": [{
+                    "type": "text", "text": title,
+                    "weight": "bold", "size": "md",
+                    "color": _R_HEADER_TEXT, "align": "center", "wrap": True,
+                }],
+            },
+            "body": {
+                "type": "box", "layout": "vertical", "paddingAll": "lg",
+                "backgroundColor": _R_BODY_BG,
+                "contents": [{
+                    "type": "text", "text": desc,
+                    "size": "sm", "color": _R_SUB_TEXT, "wrap": True, "align": "center",
+                }],
+            },
+            "footer": {
+                "type": "box", "layout": "vertical", "paddingAll": "md",
+                "backgroundColor": _R_BODY_BG,
+                "contents": [{
+                    "type": "button",
+                    "action": {"type": "uri", "label": btn_label, "uri": yt_url},
+                    "style": "primary", "color": _R_BTN_COLOR, "height": "sm",
+                }],
+            },
+        })
+    return FlexSendMessage(
+        alt_text="YouTubeで楽しみましょう",
+        contents={"type": "carousel", "contents": bubbles},
+        quick_reply=_build_quick_reply([
+            ("別のジャンルを見る", "動画・音楽"),
+            _QR_BACK,
+        ]),
+    )
+
+
+def _flex_music_menu() -> FlexSendMessage:
+    """動画・音楽エントリー：4枚カルーセル。"""
+    bubbles = [
+        _make_card_bubble("🎵", "音楽を聴く",
+                          "昭和の名曲・演歌・クラシック\n聴きたい音楽を探しましょう",
+                          "音楽を聴く", ""),
+        _make_card_bubble("🎬", "動画を楽しむ",
+                          "面白い動画・旅行・料理など\nYouTubeで楽しみましょう",
+                          "動画を楽しむ", ""),
+        _make_card_bubble("🏃", "体操・健康動画",
+                          "椅子体操・ストレッチ・\n認知症予防体操など",
+                          "体操・健康動画", ""),
+        _make_card_bubble("❓", "YouTubeの使い方",
+                          "開き方・検索方法・\n音量・字幕のやり方",
+                          "YouTubeの使い方", ""),
+    ]
+    return FlexSendMessage(
+        alt_text="動画・音楽を楽しみましょう",
+        contents={"type": "carousel", "contents": bubbles},
+    )
+
+
 def get_showa_reply(user_id: str, user_message: str, user_info: dict,
                     rag: dict | None = None) -> str:
     """Claude Sonnetを使って昭和トークの返答を生成する。"""
@@ -2678,6 +2753,7 @@ def handle_message(event):
         _showa_sessions.pop(user_id, None)   # 昭和セッションをクリア
         _showa_gender_pending.discard(user_id)
         _hobby_states.pop(user_id, None)     # 趣味セッションをクリア
+        _music_states.pop(user_id, None)     # 動画・音楽セッションをクリア
         _clear_history(user_id)
         line_bot_api.reply_message(
             event.reply_token,
@@ -2746,6 +2822,298 @@ def handle_message(event):
             TextSendMessage(
                 text=reply_text,
                 quick_reply=_build_quick_reply(_MENU_QR_ITEMS),
+            ),
+        )
+        return
+
+    # ── 動画・音楽（Claude不要・YouTube URL案内）──────────────────────
+
+    if msg == "動画・音楽":
+        _name = (user_info or {}).get("name") or ""
+        name_part = f"{_name}さん、" if _name else ""
+        line_bot_api.reply_message(
+            event.reply_token,
+            [
+                TextSendMessage(text=f"{name_part}音楽や動画を楽しみましょう😊"),
+                _flex_music_menu(),
+            ],
+        )
+        return
+
+    if msg == "音楽を聴く":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="どんな音楽を聴きますか？😊",
+                quick_reply=_build_quick_reply([
+                    ("昭和の歌謡曲",     "音楽:昭和の歌謡曲"),
+                    ("演歌・民謡",       "音楽:演歌・民謡"),
+                    ("クラシック・童謡", "音楽:クラシック・童謡"),
+                    ("好きな歌手を検索", "好きな歌手を検索"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    if msg.startswith("音楽:"):
+        genre = msg[len("音楽:"):]
+        if genre == "昭和の歌謡曲":
+            carousel = _youtube_carousel([
+                ("美空ひばり", "昭和を代表する歌姫\n名曲がたくさんあります🎵", "美空ひばり 名曲"),
+                ("都はるみ",   "演歌の女王\n心にしみる歌声です🎵",             "都はるみ 名曲"),
+                ("北島三郎",   "男性演歌の第一人者\n力強い歌声です🎵",         "北島三郎 名曲"),
+            ], "YouTubeで聴く")
+        elif genre == "演歌・民謡":
+            carousel = _youtube_carousel([
+                ("演歌のベスト", "懐かしい演歌を\nまとめて楽しめます🎵", "演歌 ベスト ヒット"),
+                ("民謡集",       "日本全国の\n民謡を楽しみましょう🎵", "日本民謡 ベスト"),
+                ("懐メロ特集",   "あの頃の名曲が\n次々に流れます🎵",   "懐メロ 昭和 ヒット"),
+            ], "YouTubeで聴く")
+        else:  # クラシック・童謡
+            carousel = _youtube_carousel([
+                ("日本の童謡",     "懐かしい童謡を\nゆったり聴きましょう🎵", "日本の童謡 ベスト"),
+                ("唱歌集",         "学校で歌った\nあの懐かしい唱歌🎵",       "日本唱歌 ベスト"),
+                ("クラシック名曲", "心が落ち着く\nクラシックの名曲🎵",       "クラシック 名曲 BGM"),
+            ], "YouTubeで聴く")
+        line_bot_api.reply_message(event.reply_token, carousel)
+        return
+
+    if msg == "好きな歌手を検索":
+        _music_states[user_id] = {"step": "awaiting_artist"}
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="好きな歌手や曲名を\n教えてください😊",
+                quick_reply=_build_quick_reply([_QR_BACK]),
+            ),
+        )
+        return
+
+    # 歌手・曲名の入力待ち
+    _mus = _music_states.get(user_id)
+    if _mus and _mus.get("step") == "awaiting_artist":
+        _music_states.pop(user_id, None)
+        import urllib.parse as _urlparse
+        yt_url = f"https://www.youtube.com/results?search_query={_urlparse.quote(msg)}"
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=f"「{msg}」を\nYouTubeで検索してみましょう！😊",
+                quick_reply=QuickReply(items=[
+                    QuickReplyButton(action=URIAction(label="▶️ YouTubeで開く", uri=yt_url)),
+                    QuickReplyButton(action=MessageAction(label="別の曲を探す", text="好きな歌手を検索")),
+                    QuickReplyButton(action=MessageAction(label="🏠 最初に戻る", text="最初に戻る")),
+                ]),
+            ),
+        )
+        return
+
+    if msg == "動画を楽しむ":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="どんな動画を見ますか？😊",
+                quick_reply=_build_quick_reply([
+                    ("面白い動画",                 "動画:面白い動画"),
+                    ("旅行・風景動画",             "動画:旅行・風景動画"),
+                    ("料理・趣味の動画",           "動画:料理・趣味の動画"),
+                    ("ニュース・ドキュメンタリー", "動画:ニュース・ドキュメンタリー"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    if msg.startswith("動画:"):
+        genre = msg[len("動画:"):]
+        if genre == "面白い動画":
+            carousel = _youtube_carousel([
+                ("動物・癒し動画",       "かわいい動物が\n心を癒してくれます😊", "動物 癒し ほっこり動画"),
+                ("笑える動画",           "元気が出る\n笑える動画特集😄",         "面白い動画 笑える"),
+                ("懐かしいテレビ番組", "あの頃の人気番組を\n懐かしもう📺",       "昭和 懐かしい テレビ番組"),
+            ], "YouTubeで見る")
+        elif genre == "旅行・風景動画":
+            carousel = _youtube_carousel([
+                ("日本の絶景",   "美しい日本の\n絶景を旅しよう🗾",     "日本の絶景 4K 風景"),
+                ("温泉地の風景", "名湯の風景と\n旅気分を楽しもう♨️", "温泉地 風景 旅行"),
+                ("昭和の街並み", "懐かしい昭和の\n街並みを歩こう🏘️", "昭和 街並み 懐かしい"),
+            ], "YouTubeで見る")
+        elif genre == "料理・趣味の動画":
+            carousel = _youtube_carousel([
+                ("簡単レシピ動画", "わかりやすい\n料理の作り方🍳",         "簡単 料理 レシピ 動画"),
+                ("趣味の動画",     "様々な趣味の\nやり方動画🌸",           "趣味 手芸 作り方 動画"),
+                ("手芸・工作",     "素敵な手作り作品の\n作り方を学ぼう✂️", "手芸 工作 作り方 動画"),
+            ], "YouTubeで見る")
+        else:  # ニュース・ドキュメンタリー
+            carousel = _youtube_carousel([
+                ("NHKニュース",               "最新のニュースを\nわかりやすく📰",     "NHK ニュース"),
+                ("昭和のドキュメンタリー",     "あの時代を\n振り返ろう📻",           "昭和 ドキュメンタリー 懐かしい"),
+                ("自然・動物ドキュメンタリー", "大自然の神秘を\n楽しもう🦁",         "自然 動物 ドキュメンタリー"),
+            ], "YouTubeで見る")
+        line_bot_api.reply_message(event.reply_token, carousel)
+        return
+
+    if msg == "体操・健康動画":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "体の状態を教えてください😊\n"
+                    "ぴったりの体操動画を\n"
+                    "ご紹介しますよ！"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("椅子に座ってできる体操", "体操動画:椅子に座ってできる体操"),
+                    ("ストレッチ",             "体操動画:ストレッチ"),
+                    ("認知症予防体操",         "体操動画:認知症予防体操"),
+                    ("転倒予防体操",           "体操動画:転倒予防体操"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    if msg.startswith("体操動画:"):
+        genre = msg[len("体操動画:"):]
+        if genre == "椅子に座ってできる体操":
+            carousel = _youtube_carousel([
+                ("椅子体操入門",         "座ったまま\n簡単にできる体操です",   "椅子体操 高齢者 入門"),
+                ("座ってできる足腰体操", "足腰を鍛える\n椅子体操です",         "椅子体操 足腰 高齢者"),
+                ("座ってできる上半身体操", "肩・腕・首を\n動かす体操です",     "椅子体操 上半身 高齢者"),
+            ], "YouTubeで見る")
+        elif genre == "ストレッチ":
+            carousel = _youtube_carousel([
+                ("朝のストレッチ",       "一日の始まりに\n気持ちよく伸ばそう", "朝のストレッチ 高齢者"),
+                ("腰痛予防ストレッチ",   "腰の痛みを\n和らげるストレッチ",     "腰痛予防 ストレッチ 高齢者"),
+                ("肩こり解消ストレッチ", "肩のこりを\nほぐすストレッチ",       "肩こり解消 ストレッチ 高齢者"),
+            ], "YouTubeで見る")
+        elif genre == "認知症予防体操":
+            carousel = _youtube_carousel([
+                ("コグニサイズ",         "体を動かしながら\n頭も使う体操です", "コグニサイズ 認知症予防"),
+                ("指体操・脳トレ体操",   "指を動かして\n脳を活性化します",     "指体操 脳トレ 高齢者"),
+                ("歌いながら体操",       "楽しく歌いながら\n体を動かします",   "歌いながら体操 高齢者"),
+            ], "YouTubeで見る")
+        else:  # 転倒予防体操
+            carousel = _youtube_carousel([
+                ("バランス体操", "バランス感覚を\n鍛えて転倒予防",   "バランス体操 転倒予防 高齢者"),
+                ("足腰強化体操", "足腰を強くして\n安全に歩こう",     "足腰強化 体操 高齢者"),
+                ("歩行改善体操", "歩き方を改善する\n体操を学ぼう",   "歩行改善 体操 高齢者"),
+            ], "YouTubeで見る")
+        line_bot_api.reply_message(event.reply_token, carousel)
+        return
+
+    if msg == "YouTubeの使い方":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="何について知りたいですか？😊",
+                quick_reply=_build_quick_reply([
+                    ("YouTubeの開き方", "YouTube使い方:YouTubeの開き方"),
+                    ("動画の検索方法",  "YouTube使い方:動画の検索方法"),
+                    ("音量の調整方法",  "YouTube使い方:音量の調整方法"),
+                    ("字幕の出し方",    "YouTube使い方:字幕の出し方"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    if msg.startswith("YouTube使い方:"):
+        topic = msg[len("YouTube使い方:"):]
+        _yt_qr_done = _build_quick_reply([
+            ("他の使い方を教えて", "YouTubeの使い方"),
+            ("動画を楽しむ",       "動画を楽しむ"),
+            _QR_BACK,
+        ])
+        _yt_qr_retry = lambda t: _build_quick_reply([
+            ("もう一度説明して", f"YouTube使い方:{t}"),
+            ("他の使い方を教えて", "YouTubeの使い方"),
+            _QR_BACK,
+        ])
+        if topic == "YouTubeの開き方":
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(
+                    text=(
+                        "YouTubeはスマホに\n"
+                        "入っているアプリですよ😊\n\n"
+                        "赤い□に白い▷が\n"
+                        "描いてあるアイコンです\n"
+                        "それをタップしてください！"
+                    ),
+                    quick_reply=_build_quick_reply([
+                        ("開けました！",         "動画を楽しむ"),
+                        ("アプリが見つからない", "YouTubeアプリが見つからない"),
+                        _QR_BACK,
+                    ]),
+                ),
+            )
+        elif topic == "動画の検索方法":
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(
+                    text=(
+                        "YouTubeで動画を\n"
+                        "検索する方法ですよ😊\n\n"
+                        "1. YouTubeを開く\n"
+                        "2. 上の検索バーをタップ\n"
+                        "3. 見たい動画の名前を入力\n"
+                        "4. 虫眼鏡ボタンをタップ"
+                    ),
+                    quick_reply=_yt_qr_retry("動画の検索方法"),
+                ),
+            )
+        elif topic == "音量の調整方法":
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(
+                    text=(
+                        "動画の音量の\n"
+                        "調整方法ですよ😊\n\n"
+                        "1. スマホの側面にある\n"
+                        "   音量ボタン（＋）を押す\n"
+                        "2. または動画を再生中に\n"
+                        "   画面をタップして\n"
+                        "   スライダーを動かす"
+                    ),
+                    quick_reply=_yt_qr_retry("音量の調整方法"),
+                ),
+            )
+        else:  # 字幕の出し方
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(
+                    text=(
+                        "YouTubeの字幕の\n"
+                        "出し方ですよ😊\n\n"
+                        "1. 動画を再生中に\n"
+                        "   画面をタップ\n"
+                        "2. 右上の「CC」または\n"
+                        "   字幕アイコンをタップ\n"
+                        "3. 字幕が表示されます"
+                    ),
+                    quick_reply=_yt_qr_retry("字幕の出し方"),
+                ),
+            )
+        return
+
+    if msg == "YouTubeアプリが見つからない":
+        import urllib.parse as _urlparse2
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "アプリが見つからない場合は\n"
+                    "こちらから開けますよ😊"
+                ),
+                quick_reply=QuickReply(items=[
+                    QuickReplyButton(action=URIAction(
+                        label="▶️ YouTubeを開く",
+                        uri="https://www.youtube.com",
+                    )),
+                    QuickReplyButton(action=MessageAction(label="🏠 最初に戻る", text="最初に戻る")),
+                ]),
             ),
         )
         return
@@ -2969,18 +3337,22 @@ def handle_message(event):
         )
         return
 
-    # 体操動画 → YouTube
+    # 体操動画 → 体操・健康動画メニューへ
     if msg == "体操動画を見る":
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(
-                text="体操の動画をYouTubeで\n見てみましょう😊",
-                quick_reply=QuickReply(items=[
-                    QuickReplyButton(action=URIAction(
-                        label="▶️ YouTubeを開く",
-                        uri="https://www.youtube.com/results?search_query=高齢者体操",
-                    )),
-                    QuickReplyButton(action=MessageAction(label="🏠 最初に戻る", text="最初に戻る")),
+                text=(
+                    "体の状態を教えてください😊\n"
+                    "ぴったりの体操動画を\n"
+                    "ご紹介しますよ！"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("椅子に座ってできる体操", "体操動画:椅子に座ってできる体操"),
+                    ("ストレッチ",             "体操動画:ストレッチ"),
+                    ("認知症予防体操",         "体操動画:認知症予防体操"),
+                    ("転倒予防体操",           "体操動画:転倒予防体操"),
+                    _QR_BACK,
                 ]),
             ),
         )
