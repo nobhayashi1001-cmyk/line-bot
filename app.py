@@ -1391,15 +1391,6 @@ def get_claude_reply(
             except Exception:
                 pass
 
-    # 会話継続中はDBをスキップして文脈を優先する
-    # 新規トピック時はFAQをhandle_message側で確認済みなので飲食店情報のみ注入
-    if not skip_faq:
-        user_region = (user_info or {}).get("region", "")
-        if _is_food_query(user_message) and user_region:
-            restaurant_context = _search_restaurants(user_message)
-            if restaurant_context:
-                system += f"\n\n{restaurant_context}\n上記の情報を参考にして答えてください。"
-
     try:
         response = anthropic_client.messages.create(
             model="claude-haiku-4-5",
