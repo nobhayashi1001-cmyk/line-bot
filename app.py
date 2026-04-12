@@ -4046,12 +4046,50 @@ def handle_message(event):
                 text=(
                     "目標をスケジュールに\n"
                     "入れておきましょう😊\n"
-                    "Googleカレンダーで管理できますよ！"
+                    "LINEカレンダーで管理できますよ！"
                 ),
                 quick_reply=QuickReply(items=[
                     QuickReplyButton(action=URIAction(
                         label="📅 カレンダーを開く",
                         uri="https://liff.line.me/2009711933-tXV7CqW9/calendar",
+                    )),
+                    QuickReplyButton(action=MessageAction(label="🏠 最初に戻る", text="最初に戻る")),
+                ]),
+            ),
+        )
+        return
+
+    if msg in ("LINEカレンダーの使い方を教えて", "カレンダーの使い方を教えて"):
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "LINEカレンダーの使い方を\n"
+                    "説明しますね😊\n\n"
+                    "STEP1：LINEを開く\n"
+                    "・いつものLINEアプリを開いてください\n\n"
+                    "STEP2：カレンダーを探す\n"
+                    "・画面下のメニューを見てください\n"
+                    "・カレンダーのアイコンをタップ\n\n"
+                    "STEP3：予定を追加する\n"
+                    "・右下の「＋」ボタンをタップ\n"
+                    "・日付と予定の内容を入力\n"
+                    "・「保存」をタップ\n\n"
+                    "STEP4：家族と共有する\n"
+                    "・予定を作成する時に\n"
+                    "  共有したい家族を選べます\n\n"
+                    "これだけで使えますよ！😊\n"
+                    "わからないことがあれば\n"
+                    "何でも聞いてくださいね"
+                ),
+                quick_reply=QuickReply(items=[
+                    QuickReplyButton(action=URIAction(
+                        label="📅 カレンダーを開く",
+                        uri="https://liff.line.me/2009711933-tXV7CqW9/calendar",
+                    )),
+                    QuickReplyButton(action=MessageAction(
+                        label="もっと詳しく教えて",
+                        text="LINEカレンダーについてもっと詳しく教えてください",
                     )),
                     QuickReplyButton(action=MessageAction(label="🏠 最初に戻る", text="最初に戻る")),
                 ]),
@@ -7011,58 +7049,9 @@ document.addEventListener('DOMContentLoaded', function() {{
 """
 
 
-_LIFF_CALENDAR_HTML = """\
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Googleカレンダーを開く</title>
-<script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-<style>
-body{{
-  margin:0;background:#F5E6A3;
-  font-family:'Hiragino Mincho ProN','Yu Mincho',serif;
-  display:flex;align-items:center;justify-content:center;
-  min-height:100vh;flex-direction:column;gap:20px;padding:24px;
-  text-align:center;color:#4A2C0A;
-}}
-.msg{{font-size:19px;line-height:1.8;}}
-.btn{{
-  padding:18px 32px;font-size:19px;font-weight:bold;
-  background:#8B1A1A;color:#FFD700;
-  border:none;border-radius:10px;cursor:pointer;
-  box-shadow:0 4px 0 #5C1010;touch-action:manipulation;
-}}
-</style>
-</head>
-<body>
-<div class="msg">&#128197; Google&#12459;&#12524;&#12531;&#12480;&#12540;&#12434;&#38283;&#12365;&#12414;&#12377;...</div>
-<button class="btn" id="open-btn">&#38283;&#12363;&#12394;&#12356;&#22580;&#21512;&#12399;&#12371;&#12385;&#12425;</button>
-<script>
-var GCAL_URL = "https://calendar.google.com/calendar/r";
-document.addEventListener('DOMContentLoaded', function() {{
-  document.getElementById('open-btn').addEventListener('click', function() {{
-    open(GCAL_URL);
-  }});
-  liff.init({{ liffId: "{liff_id}" }})
-    .then(function() {{
-      liff.openWindow({{ url: GCAL_URL, external: true }});
-    }})
-    .catch(function() {{
-      window.location.href = GCAL_URL;
-    }});
-}});
-</script>
-</body>
-</html>
-"""
-
-
 @app.route("/liff/calendar", methods=["GET"])
 def liff_calendar():
-    html = _LIFF_CALENDAR_HTML.format(liff_id=LIFF_ID)
-    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+    return render_template("liff_calendar.html", liff_id=os.environ.get("LIFF_ID", LIFF_ID))
 
 
 @app.route("/liff/travel", methods=["GET"])
