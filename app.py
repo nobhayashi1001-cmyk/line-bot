@@ -155,6 +155,12 @@ _health_states: dict[str, str] = {}
 # 食事レシピの途中状態: {user_id: dict}
 # step: "mood" | "ingredients" | "condition" | "step_by_step"
 _recipe_states: dict[str, dict] = {}
+# 昭和モード：性別未登録ユーザーが「なつかしい昭和」を押して性別入力待ち
+_showa_gender_pending: set[str] = set()
+# 昭和トーク中のセッション: {user_id: {"era": int, "gender": str|None, "topic": str}}
+_showa_sessions: dict[str, dict] = {}
+# 趣味・生きがいの途中状態: {user_id: {"step": str, "data": dict}}
+_hobby_states: dict[str, dict] = {}
 
 # ユーザー情報キャッシュ: {user_id: {"name": str, "region": str} | None}
 user_cache: dict[str, dict | None] = {}
@@ -233,6 +239,33 @@ SYSTEM_PROMPT = """あなたは「御用聞きさん」です。
 ・情報の詰め込みすぎ、不確かな断定
 ・AIっぽい堅苦しい言い回し
 ・マークダウン記法全般"""
+
+SHOWA_MODEL = "claude-sonnet-4-20250514"
+
+SHOWA_SYSTEM_PROMPT = """あなたは「昭和博士」です。
+昭和時代のことなら何でも知っている話し上手で聞き上手な会話の達人です。
+
+【キャラクター】
+・昭和のことなら何でも知っている博士
+・ユーザーの話を聞くのが大好き
+・共感上手・盛り上げ上手
+・「そうそう！あの頃は〜」が口癖
+・温かく・楽しく・懐かしい雰囲気
+・絵文字は😊🌸📻🎵🎶を多用
+
+【話し方】
+・ユーザーの話を必ず褒める
+  「それは素敵な思い出ですね😊」「懐かしいですよね！」
+・昭和の豆知識を自然に添える
+  「昭和○○年といえば〜でしたよね！」
+・「もっと聞かせてください！」で会話を続ける
+・話が盛り上がったら関連するYouTube検索URLを提案する
+
+【禁止事項】
+・難しい言葉・専門用語を使わない
+・暗い話題・戦争の悲惨な話は深入りしない
+・ユーザーの記憶を否定しない
+・マークダウン記法を使わない"""
 
 MAX_HISTORY         = 20
 API_TIMEOUT         = 25  # Claude API呼び出しのタイムアウト（秒）
@@ -600,7 +633,7 @@ def _flex_connect_menu() -> FlexSendMessage:
         _retro_nav_bubble("ショートカット", [
             ("散歩仲間",       "散歩仲間を探したいです"),
             ("ゲートボール",   "ゲートボールの情報を教えてください"),
-            ("昔の話をする",   "昭和の思い出について話しましょう"),
+            ("昔の話をする",   "なつかしい昭和"),
             ("🏠 最初に戻る",  "最初に戻る"),
         ]),
         _make_card_bubble("🌸", "趣味のサークル", "手芸・園芸・将棋など\n同じ趣味の仲間を",
@@ -608,7 +641,7 @@ def _flex_connect_menu() -> FlexSendMessage:
         _make_card_bubble("👥", "地域の集まり", "町内会・老人会など\n地域の輪に加わろう",
                           "地域の集まりについて教えてください", "", _card_icon("community.png")),
         _make_card_bubble("📻", "昭和の思い出話", "懐かしい話を一緒に\n楽しみましょう",
-                          "昭和の思い出話をしましょう", "", _card_icon("retro.png")),
+                          "なつかしい昭和", "", _card_icon("retro.png")),
     ]
     return FlexSendMessage(
         alt_text="つながりを広げましょう",
@@ -1221,43 +1254,388 @@ def _flex_travel_menu() -> FlexSendMessage:
     )
 
 
-def _get_showa_era_text(birthdate_str: str) -> str:
-    """生年月日文字列から昭和年代を計算して話題テキストを返す。"""
+def _get_era_from_birthdate(birthdate_str: str) -> int:
+    """生年月日文字列から年代（1930/40/50/60/70）を返す。不明時は1960。"""
     try:
-        # 「1950年1月1日」「1950-01-01」「1950/01/01」など複数フォーマット対応
-        import re as _re
-        m = _re.search(r'(\d{4})', birthdate_str or "")
+        m = re.search(r'(\d{4})', birthdate_str or "")
         birth_year = int(m.group(1)) if m else None
     except Exception:
         birth_year = None
+    if birth_year is None:
+        return 1960
+    if 1930 <= birth_year <= 1939:
+        return 1930
+    if 1940 <= birth_year <= 1949:
+        return 1940
+    if 1950 <= birth_year <= 1959:
+        return 1950
+    if 1960 <= birth_year <= 1969:
+        return 1960
+    if 1970 <= birth_year <= 1979:
+        return 1970
+    return 1960
 
-    if birth_year:
-        # 子ども時代の年代（10〜20歳ごろ）
-        childhood_year = birth_year + 15
-        # 昭和年に変換（昭和元年=1926年）
-        showa_year = childhood_year - 1925
-        if 1 <= showa_year <= 64:
-            era_label = f"昭和{showa_year}年ごろ"
-        elif childhood_year < 1926:
-            era_label = "大正・昭和初期"
+
+def _get_current_season() -> str:
+    """現在の月から季節文字列を返す。"""
+    month = datetime.now().month
+    if month in (3, 4, 5):
+        return "spring"
+    if month in (6, 7, 8):
+        return "summer"
+    if month in (9, 10, 11):
+        return "autumn"
+    return "winter"
+
+
+def _get_showa_rag(gender: str | None, era: int, season: str,
+                   exclude_topic: str = "") -> dict | None:
+    """showa_ragテーブルからランダムに1件取得する。"""
+    try:
+        sb = get_supabase()
+        # gender フィルタ：ユーザーの性別 OR 'both'
+        if gender in ("male", "female"):
+            rows = sb.table("showa_rag").select("*").in_(
+                "gender", [gender, "both"]
+            ).eq("era", era).in_("season", [season, "all"]).execute()
         else:
-            era_label = f"{childhood_year}年ごろ"
-        return (
-            f"懐かしい昭和の話をしましょう😊\n\n"
-            f"あなたが若いころ、{era_label}はどんな思い出がありますか？\n\n"
-            "・流行っていた歌や映画\n"
-            "・子どもの頃に遊んでいたこと\n"
-            "・思い出の食べ物やお店\n\n"
-            "ぜひ聞かせてください！"
-        )
-    return (
-        "懐かしい昭和の話をしましょう😊\n\n"
-        "あなたの子どもの頃、どんな思い出がありますか？\n\n"
-        "・流行っていた歌や映画\n"
-        "・遊んでいたこと\n"
-        "・思い出の食べ物やお店\n\n"
-        "ぜひ聞かせてください！"
+            rows = sb.table("showa_rag").select("*").eq(
+                "gender", "both"
+            ).eq("era", era).in_("season", [season, "all"]).execute()
+
+        data = rows.data or []
+        if exclude_topic:
+            data = [r for r in data if r.get("topic") != exclude_topic]
+        if not data:
+            # era/season 制約を外して再取得
+            if gender in ("male", "female"):
+                rows2 = sb.table("showa_rag").select("*").in_(
+                    "gender", [gender, "both"]
+                ).execute()
+            else:
+                rows2 = sb.table("showa_rag").select("*").eq("gender", "both").execute()
+            data = rows2.data or []
+            if exclude_topic:
+                data = [r for r in data if r.get("topic") != exclude_topic]
+        if not data:
+            return None
+        import random
+        return random.choice(data)
+    except Exception as e:
+        logging.error("_get_showa_rag error: %s", e)
+        return None
+
+
+def _flex_showa_menu(name: str, era: int) -> FlexSendMessage:
+    """「なつかしい昭和」エントリー：3枚カードのカルーセル。"""
+    era_label = f"{era}年代"
+    bubbles = [
+        {
+            "type": "bubble",
+            "header": {
+                "type": "box", "layout": "vertical", "paddingAll": "md",
+                "backgroundColor": "#8B1A1A",
+                "contents": [{"type": "text", "text": "💬 AIと昭和トーク",
+                               "weight": "bold", "size": "lg", "color": "#FFFFFF", "align": "center"}],
+            },
+            "body": {
+                "type": "box", "layout": "vertical", "paddingAll": "md",
+                "backgroundColor": "#FEF9C3",
+                "contents": [{"type": "text", "text": "思い出話を聞かせてください😊\n懐かしい記憶を一緒に楽しみましょう",
+                               "wrap": True, "size": "md", "color": "#333333"}],
+            },
+            "footer": {
+                "type": "box", "layout": "vertical", "paddingAll": "sm",
+                "backgroundColor": "#FEF9C3",
+                "contents": [{"type": "button",
+                               "action": {"type": "message", "label": "始める", "text": "昭和トーク開始"},
+                               "style": "primary", "color": "#8B1A1A"}],
+            },
+        },
+        {
+            "type": "bubble",
+            "header": {
+                "type": "box", "layout": "vertical", "paddingAll": "md",
+                "backgroundColor": "#8B1A1A",
+                "contents": [{"type": "text", "text": "🎵 昭和の歌を聴く",
+                               "weight": "bold", "size": "lg", "color": "#FFFFFF", "align": "center"}],
+            },
+            "body": {
+                "type": "box", "layout": "vertical", "paddingAll": "md",
+                "backgroundColor": "#FEF9C3",
+                "contents": [{"type": "text", "text": "懐かしい歌をYouTubeで\n聴いてみませんか？🎶",
+                               "wrap": True, "size": "md", "color": "#333333"}],
+            },
+            "footer": {
+                "type": "box", "layout": "vertical", "paddingAll": "sm",
+                "backgroundColor": "#FEF9C3",
+                "contents": [{"type": "button",
+                               "action": {"type": "message", "label": "聴く", "text": "昭和の歌"},
+                               "style": "primary", "color": "#8B1A1A"}],
+            },
+        },
+        {
+            "type": "bubble",
+            "header": {
+                "type": "box", "layout": "vertical", "paddingAll": "md",
+                "backgroundColor": "#8B1A1A",
+                "contents": [{"type": "text", "text": "📅 今日は昭和何の日？",
+                               "weight": "bold", "size": "lg", "color": "#FFFFFF", "align": "center"}],
+            },
+            "body": {
+                "type": "box", "layout": "vertical", "paddingAll": "md",
+                "backgroundColor": "#FEF9C3",
+                "contents": [{"type": "text", "text": "今日の昭和の出来事を\nご紹介します📻",
+                               "wrap": True, "size": "md", "color": "#333333"}],
+            },
+            "footer": {
+                "type": "box", "layout": "vertical", "paddingAll": "sm",
+                "backgroundColor": "#FEF9C3",
+                "contents": [{"type": "button",
+                               "action": {"type": "message", "label": "見る", "text": "昭和今日は何の日"},
+                               "style": "primary", "color": "#8B1A1A"}],
+            },
+        },
+    ]
+    return FlexSendMessage(
+        alt_text="なつかしい昭和",
+        contents={"type": "carousel", "contents": bubbles},
     )
+
+
+# ── 趣味・生きがい ヘルパー ──────────────────────────────────────────
+
+# 座標マッピング（Google Maps URLに使用）
+_CITY_COORDS: dict[str, tuple[float, float]] = {
+    "藤沢市":   (35.3394, 139.4882),
+    "鎌倉市":   (35.3197, 139.5468),
+    "茅ヶ崎市": (35.3316, 139.4033),
+    "逗子市":   (35.2948, 139.5765),
+    "葉山町":   (35.2748, 139.5844),
+    "大和市":   (35.4589, 139.4619),
+    "横浜市":   (35.4437, 139.6380),
+    "川崎市":   (35.5309, 139.7030),
+    "相模原市": (35.5724, 139.3725),
+}
+_DEFAULT_COORDS = (35.6762, 139.6503)  # 東京（フォールバック）
+
+
+def _get_city_coords(user_info: dict | None) -> tuple[float, float]:
+    """ユーザーの登録都市から座標を返す。未対応都市は東京をデフォルトとする。"""
+    if not user_info:
+        return _DEFAULT_COORDS
+    city = user_info.get("city") or ""
+    return _CITY_COORDS.get(city, _DEFAULT_COORDS)
+
+
+def _maps_url(query: str, user_info: dict | None, zoom: int = 14) -> str:
+    """Google Maps検索URLを返す（APIコストゼロ）。"""
+    import urllib.parse
+    lat, lng = _get_city_coords(user_info)
+    q = urllib.parse.quote(query)
+    return f"https://www.google.com/maps/search/{q}/@{lat},{lng},{zoom}z"
+
+
+HOBBY_SYSTEM_REOPEN = """あなたは高齢者の趣味再開をサポートする専門家です。
+
+以下のルールで回答してください：
+・再開するための具体的なステップを3つ以内で説明する
+・必要な用具・費用の目安を伝える
+・体への負担を考慮したアドバイスをする
+・地域の教室・サークルへの参加を自然に提案する
+・専門用語は使わない
+・マークダウン記法は使わない
+・最後に励ましの一言を添える"""
+
+HOBBY_SYSTEM_IKIGAI = """あなたは高齢者の生きがい発見をサポートする専門家です。
+
+以下のルールで回答してください：
+・ユーザーの話を必ず褒める
+・経験・スキルを活かせる具体的な活動を3つ提案する
+・地域とのつながりにつながる提案をする
+・小さく始められることを強調する
+・専門用語は使わない
+・マークダウン記法は使わない
+・最後に前向きな一言を添える
+
+提案の例：
+・料理が得意 → 料理教室の生徒・先生・地域の食事会でのお手伝い
+・大工仕事 → 地域の修繕ボランティア・シルバー人材センター
+・英語が話せる → 観光ボランティア・外国人支援
+・子育て経験 → 子育て支援ボランティア・保育園のお手伝い"""
+
+HOBBY_SYSTEM_PROPOSAL = """あなたは高齢者の趣味探しをサポートする専門家です。
+
+以下のルールで趣味を3つ提案してください：
+・選んだ好みと体力レベルに合った趣味
+・高齢者が始めやすい趣味
+・費用が少なくて始められる趣味
+・各趣味について趣味名・おすすめポイント（1行）・始め方のヒント（1行）を含める
+・専門用語は使わない
+
+必ずJSON配列のみを返してください（説明不要）:
+[{"name":"趣味名","emoji":"絵文字1文字","recommend":"おすすめポイント1行","howto":"始め方ヒント1行"},{"name":"...","emoji":"...","recommend":"...","howto":"..."},{"name":"...","emoji":"...","recommend":"...","howto":"..."}]"""
+
+HOBBY_SYSTEM_DETAIL = """あなたは高齢者の趣味サポートをする専門家です。
+
+以下のルールで回答してください（マークダウン禁止）：
+・始め方を具体的な3ステップで説明する（番号付き）
+・必要なもの・費用の目安を具体的に伝える
+・体への効果（健康・認知症予防など）を伝える
+・お住まいの地域での楽しみ方（地域の教室・公園など）を提案する
+・専門用語は使わない"""
+
+
+def _hobby_claude_text(system: str, user_text: str) -> str:
+    """Claude Sonnetでテキスト返答を生成する。"""
+    try:
+        resp = anthropic_client.messages.create(
+            model=SHOWA_MODEL,
+            max_tokens=800,
+            system=system,
+            messages=[{"role": "user", "content": user_text}],
+            timeout=API_TIMEOUT,
+        )
+        text = next(
+            (b.text for b in resp.content if b.type == "text"),
+            "申し訳ありません。もう一度お試しください。",
+        )
+        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+        text = re.sub(r'\*(.+?)\*',     r'\1', text)
+        text = re.sub(r'^#{1,6}\s+',    '',    text, flags=re.MULTILINE)
+        return text
+    except Exception as e:
+        logging.error("hobby claude text error: %s", e)
+        return "申し訳ありません。少し時間をおいてもう一度お試しください。"
+
+
+def _hobby_proposal_list(interest: str, fitness: str, age_approx: int) -> list[dict]:
+    """Claude Sonnetで趣味提案3件をJSON配列で生成する。"""
+    prompt = (
+        f"好み・体の状態：{interest}\n"
+        f"体力レベル：{fitness}\n"
+        f"年齢目安：{age_approx}歳前後\n\n"
+        "この方に合った趣味を3つ提案してください。"
+    )
+    try:
+        resp = anthropic_client.messages.create(
+            model=SHOWA_MODEL,
+            max_tokens=600,
+            system=HOBBY_SYSTEM_PROPOSAL,
+            messages=[{"role": "user", "content": prompt}],
+            timeout=API_TIMEOUT,
+        )
+        raw = next((b.text for b in resp.content if b.type == "text"), "[]")
+        s, e = raw.find("["), raw.rfind("]") + 1
+        if 0 <= s < e:
+            return json.loads(raw[s:e])
+    except Exception as err:
+        logging.error("hobby proposal list error: %s", err)
+    return [
+        {"name": "ウォーキング",   "emoji": "🚶", "recommend": "体に優しく続けやすい",   "howto": "まず近所を10分から始める"},
+        {"name": "俳句・川柳",     "emoji": "✏️", "recommend": "座ったまま楽しめる",     "howto": "地域の句会に参加してみる"},
+        {"name": "園芸・家庭菜園", "emoji": "🌱", "recommend": "自然と触れ合えて癒やされる", "howto": "プランターで野菜を育てる"},
+    ]
+
+
+def _flex_hobby_proposals(proposals: list[dict]) -> FlexSendMessage:
+    """趣味提案3枚カルーセルを生成する。"""
+    bubbles = [
+        _make_card_bubble(
+            p.get("emoji", "🌸"),
+            p.get("name", "趣味"),
+            f"{p.get('recommend', '')}\n{p.get('howto', '')}",
+            f"趣味詳細:{p.get('name', '趣味')}",
+            "",
+        )
+        for p in proposals[:3]
+    ]
+    return FlexSendMessage(
+        alt_text="趣味を提案します",
+        contents={"type": "carousel", "contents": bubbles},
+        quick_reply=_build_quick_reply([
+            ("教室・仲間を探す",   "教室仲間を探す"),
+            ("別の趣味も見てみる", "新しい趣味を始めたい"),
+            _QR_BACK,
+        ]),
+    )
+
+
+def _flex_hobby_menu(name: str) -> FlexSendMessage:
+    """趣味・生きがいエントリー：3枚カルーセル。"""
+    bubbles = [
+        _make_card_bubble("🎨", "趣味を探す・始める",
+                          "あなたに合った趣味を\n一緒に見つけましょう",
+                          "趣味を探す", ""),
+        _make_card_bubble("👥", "教室・仲間を探す",
+                          "教室・サークル・ボランティアを\n探しましょう",
+                          "教室仲間を探す", ""),
+        _make_card_bubble("💝", "生きがいを見つける",
+                          "あなたの経験・強みを\n活かしましょう",
+                          "生きがいを見つける", ""),
+    ]
+    return FlexSendMessage(
+        alt_text="趣味・生きがいについて",
+        contents={"type": "carousel", "contents": bubbles},
+    )
+
+
+def get_showa_reply(user_id: str, user_message: str, user_info: dict,
+                    rag: dict | None = None) -> str:
+    """Claude Sonnetを使って昭和トークの返答を生成する。"""
+    history = _load_history(user_id)
+    history.append({"role": "user", "content": user_message})
+    session = _showa_sessions.get(user_id, {})
+    metadata = {
+        "mode": "showa",
+        "topic": (rag or session).get("topic", ""),
+        "era":   session.get("era", 1960),
+        "gender": session.get("gender"),
+    }
+    _save_message(user_id, "user", user_message, metadata)
+
+    if len(history) > MAX_HISTORY:
+        history = history[-MAX_HISTORY:]
+
+    system = SHOWA_SYSTEM_PROMPT
+    name = (user_info or {}).get("name") or ""
+    era  = session.get("era", 1960)
+    if name:
+        system += f"\n\n【ユーザー情報】\n・名前：{name}（必ず「{name}さん」と呼びかける）\n・{era}年代生まれ"
+
+    if rag:
+        system += (
+            f"\n\n【今回の話題RAGデータ】"
+            f"\n・話題：{rag['topic']}"
+            f"\n・質問文：{rag['question']}"
+            f"\n・背景知識：{rag['background']}"
+            f"\n・深掘り質問：{rag['followup']}"
+            "\n\n上記のRAGデータを参考に、自然な昭和トークを展開してください。"
+            "\n必ず名前で呼びかけ、questionをベースに話しかけ、backgroundの豆知識を自然に添え、最後に1つだけ質問してください。"
+        )
+
+    try:
+        response = anthropic_client.messages.create(
+            model=SHOWA_MODEL,
+            max_tokens=800,
+            system=system,
+            messages=history,
+            timeout=API_TIMEOUT,
+        )
+        reply_text = next(
+            (block.text for block in response.content if block.type == "text"),
+            "申し訳ありません。もう一度お試しください。",
+        )
+    except Exception as e:
+        logging.exception("Showa Claude API error: %s", e)
+        reply_text = "少し調子が悪いようです。もう一度試してみてください😊"
+
+    reply_text = re.sub(r'\*\*(.+?)\*\*', r'\1', reply_text)
+    reply_text = re.sub(r'\*(.+?)\*',     r'\1', reply_text)
+    reply_text = re.sub(r'^#{1,6}\s+',    '',    reply_text, flags=re.MULTILINE)
+
+    _save_message(user_id, "assistant", reply_text, metadata)
+    return reply_text
 
 
 # ── 登録フロー ─────────────────────────────────────────
@@ -1340,13 +1718,44 @@ def handle_registration(user_id: str, message: str) -> FlexSendMessage | TextSen
             return TextSendMessage(text="紹介コードを入力してください。")
         else:
             _save_user(user_id, state)
-            del registration_states[user_id]
-            return _build_welcome_message()
+            state["step"] = "awaiting_gender"
+            return TextSendMessage(
+                text="最後に性別を教えてください😊\n昭和の思い出話を合わせるためです",
+                quick_reply=_build_quick_reply([
+                    ("男性", "性別:男性"),
+                    ("女性", "性別:女性"),
+                    ("答えたくない", "性別:答えたくない"),
+                ]),
+            )
 
     if step == "awaiting_referral_code":
         code = message.strip().upper()
         _save_user(user_id, state)
         referral_msg = _handle_referral_input(user_id, code)
+        state["referral_msg"] = referral_msg
+        state["step"] = "awaiting_gender"
+        return TextSendMessage(
+            text="最後に性別を教えてください😊\n昭和の思い出話を合わせるためです",
+            quick_reply=_build_quick_reply([
+                ("男性", "性別:男性"),
+                ("女性", "性別:女性"),
+                ("答えたくない", "性別:答えたくない"),
+            ]),
+        )
+
+    if step == "awaiting_gender":
+        gender_map = {"性別:男性": "male", "性別:女性": "female", "性別:答えたくない": None}
+        gender = gender_map.get(message.strip())
+        if gender is not None or message.strip() == "性別:答えたくない":
+            if gender:
+                try:
+                    get_supabase().table("users").update({"gender": gender}).eq(
+                        "line_user_id", user_id
+                    ).execute()
+                    user_cache.pop(user_id, None)
+                except Exception as e:
+                    logging.error("gender update error: %s", e)
+        referral_msg = state.get("referral_msg")
         del registration_states[user_id]
         return _build_welcome_message(referral_msg)
 
@@ -1375,6 +1784,7 @@ def _save_user(user_id: str, state: dict) -> None:
             "city": city or None,
             "birthdate": state.get("birthdate"),
             "referral_code": referral_code,
+            "gender": state.get("gender") or None,
         },
         on_conflict="line_user_id",
     ).execute()
@@ -1382,11 +1792,14 @@ def _save_user(user_id: str, state: dict) -> None:
     _apply_rich_menu(user_id, is_paid=False)  # 無料メニューを適用
 
 
-def _save_message(user_id: str, role: str, content: str) -> None:
+def _save_message(user_id: str, role: str, content: str,
+                  metadata: dict | None = None) -> None:
     try:
-        get_supabase().table("messages").insert(
-            {"line_user_id": user_id, "role": role, "content": content}
-        ).execute()
+        row: dict = {"line_user_id": user_id, "role": role, "content": content}
+        if metadata:
+            import json as _json
+            row["metadata"] = _json.dumps(metadata, ensure_ascii=False)
+        get_supabase().table("messages").insert(row).execute()
     except Exception:
         pass  # ログ保存の失敗は返答処理に影響させない
 
@@ -1405,7 +1818,7 @@ def _get_user(user_id: str) -> dict | None:
         return user_cache[user_id]
     result = (
         get_supabase().table("users")
-        .select("name, region, prefecture, city, is_paid, birthdate")
+        .select("name, region, prefecture, city, is_paid, birthdate, gender")
         .eq("line_user_id", user_id)
         .limit(1)
         .execute()
@@ -2262,6 +2675,9 @@ def handle_message(event):
     # 「最初に戻る」系：履歴をリセットしてメニューを案内
     RESET_KEYWORDS = {"最初に戻る", "メニュー", "メニューに戻る", "他のことを聞く", "はじめに戻る", "トップ", "ホーム"}
     if msg in RESET_KEYWORDS:
+        _showa_sessions.pop(user_id, None)   # 昭和セッションをクリア
+        _showa_gender_pending.discard(user_id)
+        _hobby_states.pop(user_id, None)     # 趣味セッションをクリア
         _clear_history(user_id)
         line_bot_api.reply_message(
             event.reply_token,
@@ -2765,17 +3181,297 @@ def handle_message(event):
                 )
             return
 
-    # なつかしい昭和
+    # ── 昭和モード ──────────────────────────────────────────────────────────
+
+    # 性別入力待ちユーザーからの性別回答
+    if user_id in _showa_gender_pending:
+        gender_map = {"性別:男性": "male", "性別:女性": "female", "性別:答えたくない": None}
+        if msg in gender_map:
+            _showa_gender_pending.discard(user_id)
+            gender = gender_map[msg]
+            if gender:
+                try:
+                    get_supabase().table("users").update({"gender": gender}).eq(
+                        "line_user_id", user_id
+                    ).execute()
+                    user_cache.pop(user_id, None)
+                    user_info = {**(user_info or {}), "gender": gender}
+                except Exception as e:
+                    logging.error("showa gender update error: %s", e)
+            # 性別登録後に昭和メニューを表示
+            _name    = (user_info or {}).get("name") or ""
+            _birth   = (user_info or {}).get("birthdate", "")
+            _era     = _get_era_from_birthdate(_birth)
+            line_bot_api.reply_message(
+                event.reply_token,
+                [
+                    TextSendMessage(
+                        text=f"ありがとうございます😊\n{_name}さん、昭和の懐かしい話をしましょう！\n今日は昭和{_era}年代のお話ですよ！"
+                             if _name else f"ありがとうございます😊\n昭和の懐かしい話をしましょう！\n今日は昭和{_era}年代のお話ですよ！",
+                    ),
+                    _flex_showa_menu(_name, _era),
+                ],
+            )
+            return
+
+    # なつかしい昭和 エントリーポイント
     if msg == "なつかしい昭和":
-        birthdate = (user_info or {}).get("birthdate", "")
-        text = _get_showa_era_text(birthdate)
+        _name   = (user_info or {}).get("name") or ""
+        _birth  = (user_info or {}).get("birthdate", "")
+        _gender = (user_info or {}).get("gender")
+        _era    = _get_era_from_birthdate(_birth)
+        # 性別未登録なら先に聞く
+        if _gender is None:
+            _showa_gender_pending.add(user_id)
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(
+                    text="昭和の話題をより楽しむために\n性別を教えていただけますか？😊",
+                    quick_reply=_build_quick_reply([
+                        ("男性", "性別:男性"),
+                        ("女性", "性別:女性"),
+                        ("答えたくない", "性別:答えたくない"),
+                    ]),
+                ),
+            )
+            return
         line_bot_api.reply_message(
             event.reply_token,
-            TextSendMessage(
-                text=text,
-                quick_reply=_build_quick_reply([_QR_BACK]),
-            ),
+            [
+                TextSendMessage(
+                    text=f"{_name}さん、昭和の懐かしい話をしましょう😊\n今日は昭和{_era}年代のお話ですよ！"
+                         if _name else f"昭和の懐かしい話をしましょう😊\n今日は昭和{_era}年代のお話ですよ！",
+                ),
+                _flex_showa_menu(_name, _era),
+            ],
         )
+        return
+
+    # 昭和トーク開始
+    if msg == "昭和トーク開始":
+        _birth   = (user_info or {}).get("birthdate", "")
+        _gender  = (user_info or {}).get("gender")
+        _name    = (user_info or {}).get("name") or ""
+        _era     = _get_era_from_birthdate(_birth)
+        _season  = _get_current_season()
+        rag = _get_showa_rag(_gender, _era, _season)
+        _showa_sessions[user_id] = {
+            "era": _era, "gender": _gender,
+            "topic": rag.get("topic", "") if rag else "",
+        }
+        _clear_history(user_id)
+        prompt = (
+            f"以下のRAGデータを参考に{_name}さんに話しかけてください。\n\n"
+            if _name else "以下のRAGデータを参考にユーザーに話しかけてください。\n\n"
+        )
+        if rag:
+            prompt += (
+                f"ユーザー情報：\n"
+                f"・名前：{_name}\n・性別：{_gender or '不明'}\n・年代：{_era}年代生まれ\n\n"
+                f"RAGデータ：\n"
+                f"・話題：{rag['topic']}\n"
+                f"・質問文：{rag['question']}\n"
+                f"・背景知識：{rag['background']}\n"
+                f"・深掘り質問：{rag['followup']}\n\n"
+                "話しかける際のルール：\n"
+                "・必ず名前で呼びかける\n"
+                "・questionをベースに自然な会話文を生成する\n"
+                "・backgroundの豆知識を自然に添える\n"
+                "・最後に1つだけ質問する"
+            )
+        else:
+            prompt += f"ユーザーは{_era}年代生まれです。その年代に合った昭和の懐かしい話題で話しかけてください。"
+
+        def _showa_start_process(uid, prpt, uinfo, r_token):
+            try:
+                reply_text = get_showa_reply(uid, prpt, uinfo, rag)
+                qr = _build_quick_reply([
+                    ("思い出を話す",   "思い出を話す"),
+                    ("別の話題にする", "別の昭和の話題"),
+                    ("昭和の歌を聴く", "昭和の歌"),
+                    _QR_BACK,
+                ])
+                try:
+                    line_bot_api.reply_message(r_token, TextSendMessage(text=reply_text, quick_reply=qr))
+                except Exception:
+                    safe_push_message(uid, [TextSendMessage(text=reply_text, quick_reply=qr)], uinfo)
+            except Exception as e:
+                logging.exception("showa start error: %s", e)
+
+        threading.Thread(
+            target=_showa_start_process,
+            args=(user_id, prompt, user_info, event.reply_token),
+            daemon=True,
+        ).start()
+        return
+
+    # 別の昭和の話題
+    if msg == "別の昭和の話題":
+        _birth   = (user_info or {}).get("birthdate", "")
+        _gender  = (user_info or {}).get("gender")
+        _era     = _get_era_from_birthdate(_birth)
+        _season  = _get_current_season()
+        _exclude = _showa_sessions.get(user_id, {}).get("topic", "")
+        rag = _get_showa_rag(_gender, _era, _season, exclude_topic=_exclude)
+        _showa_sessions[user_id] = {
+            "era": _era, "gender": _gender,
+            "topic": rag.get("topic", "") if rag else "",
+        }
+        _clear_history(user_id)
+        _name = (user_info or {}).get("name") or ""
+        prompt = (
+            f"ユーザー：{_name}さん（{_era}年代生まれ、性別：{_gender or '不明'}）\n\n"
+            if _name else f"ユーザー：{_era}年代生まれ、性別：{_gender or '不明'}\n\n"
+        )
+        if rag:
+            prompt += (
+                f"新しい話題でユーザーに話しかけてください。\n"
+                f"話題：{rag['topic']}\n質問文：{rag['question']}\n"
+                f"背景知識：{rag['background']}\n深掘り質問：{rag['followup']}"
+            )
+        else:
+            prompt += "昭和の懐かしい話題で話しかけてください。"
+
+        def _showa_topic_process(uid, prpt, uinfo, r_token):
+            try:
+                reply_text = get_showa_reply(uid, prpt, uinfo, rag)
+                qr = _build_quick_reply([
+                    ("思い出を話す",   "思い出を話す"),
+                    ("別の話題にする", "別の昭和の話題"),
+                    ("昭和の歌を聴く", "昭和の歌"),
+                    _QR_BACK,
+                ])
+                try:
+                    line_bot_api.reply_message(r_token, TextSendMessage(text=reply_text, quick_reply=qr))
+                except Exception:
+                    safe_push_message(uid, [TextSendMessage(text=reply_text, quick_reply=qr)], uinfo)
+            except Exception as e:
+                logging.exception("showa topic error: %s", e)
+
+        threading.Thread(
+            target=_showa_topic_process,
+            args=(user_id, prompt, user_info, event.reply_token),
+            daemon=True,
+        ).start()
+        return
+
+    # 昭和の歌
+    if msg in ("昭和の歌", "別の歌を教えて"):
+        _birth  = (user_info or {}).get("birthdate", "")
+        _gender = (user_info or {}).get("gender")
+        _era    = _get_era_from_birthdate(_birth)
+        _name   = (user_info or {}).get("name") or ""
+
+        def _showa_song_process(uid, uinfo, r_token, era, gender, name):
+            try:
+                prompt = (
+                    f"ユーザー：{name}さん（{era}年代生まれ、性別：{gender or '不明'}）\n\n"
+                    if name else f"ユーザー：{era}年代生まれ、性別：{gender or '不明'}\n\n"
+                )
+                prompt += (
+                    "このユーザーの年代と性別に合った昭和の名曲を1曲だけ選んで紹介してください。\n"
+                    "以下の形式で答えてください：\n"
+                    "「○○さんの年代といえば\nこの歌はご存知ですか？😊\n\n"
+                    "🎵 曲名 / 歌手名\n昭和○○年の名曲ですよ！\n\n"
+                    "（曲の思い出や背景を1〜2文で紹介する）」\n"
+                    "YouTubeで聴けるよう、曲名と歌手名は正確に書いてください。"
+                )
+                response = anthropic_client.messages.create(
+                    model=SHOWA_MODEL,
+                    max_tokens=400,
+                    system=SHOWA_SYSTEM_PROMPT,
+                    messages=[{"role": "user", "content": prompt}],
+                    timeout=API_TIMEOUT,
+                )
+                reply_text = next(
+                    (b.text for b in response.content if b.type == "text"),
+                    "昭和の名曲をYouTubeで検索してみてください😊",
+                )
+                reply_text = re.sub(r'\*\*(.+?)\*\*', r'\1', reply_text)
+                reply_text = re.sub(r'\*(.+?)\*',     r'\1', reply_text)
+                reply_text = re.sub(r'^#{1,6}\s+',    '',    reply_text, flags=re.MULTILINE)
+                # YouTubeリンク生成用にタイトルを抽出（フォールバック）
+                yt_url = "https://www.youtube.com/results?search_query=昭和+歌謡曲+名曲"
+                qr = _build_quick_reply([
+                    ("YouTubeで聴く",        yt_url[:20]),
+                    ("この歌の思い出を話す", "思い出を話す"),
+                    ("別の歌を教えて",       "別の歌を教えて"),
+                    _QR_BACK,
+                ])
+                # YouTubeリンクはURIアクション（quickreplyでは開けないのでテキストに含める）
+                full_text = reply_text + f"\n\n▶ YouTubeで聴く\nhttps://www.youtube.com/results?search_query=昭和+歌謡曲+{era}年代"
+                try:
+                    line_bot_api.reply_message(r_token, TextSendMessage(text=full_text, quick_reply=_build_quick_reply([
+                        ("この歌の思い出を話す", "思い出を話す"),
+                        ("別の歌を教えて",       "別の歌を教えて"),
+                        ("昭和トークに戻る",     "昭和トーク開始"),
+                        _QR_BACK,
+                    ])))
+                except Exception:
+                    safe_push_message(uid, [TextSendMessage(text=full_text)], uinfo)
+            except Exception as e:
+                logging.exception("showa song error: %s", e)
+
+        threading.Thread(
+            target=_showa_song_process,
+            args=(user_id, user_info, event.reply_token, _era, _gender, _name),
+            daemon=True,
+        ).start()
+        return
+
+    # 昭和今日は何の日
+    if msg == "昭和今日は何の日":
+        _name  = (user_info or {}).get("name") or ""
+        _birth = (user_info or {}).get("birthdate", "")
+        _era   = _get_era_from_birthdate(_birth)
+        today  = datetime.now()
+
+        def _showa_today_process(uid, uinfo, r_token, name, era, t):
+            try:
+                prompt = (
+                    f"今日は{t.month}月{t.day}日です。\n"
+                    "昭和時代（1926〜1989年）に起きた、この日（または近い日）の出来事を1つ選んで紹介してください。\n"
+                    "以下の形式で答えてください（マークダウン禁止）：\n"
+                    f"「今日（{t.month}月{t.day}日）は昭和の歴史的な日ですよ😊\n\n"
+                    "📅 昭和○○年○月○日\n○○がありました！\n\n"
+                    f"{name}さんはあの頃何をしていましたか？」"
+                    if name else
+                    f"「今日（{t.month}月{t.day}日）は昭和の歴史的な日ですよ😊\n\n"
+                    "📅 昭和○○年○月○日\n○○がありました！\n\n"
+                    "あの頃どんな思い出がありますか？」"
+                )
+                response = anthropic_client.messages.create(
+                    model=SHOWA_MODEL,
+                    max_tokens=400,
+                    system=SHOWA_SYSTEM_PROMPT,
+                    messages=[{"role": "user", "content": prompt}],
+                    timeout=API_TIMEOUT,
+                )
+                reply_text = next(
+                    (b.text for b in response.content if b.type == "text"),
+                    "今日も昭和の記念日かもしれませんよ😊",
+                )
+                reply_text = re.sub(r'\*\*(.+?)\*\*', r'\1', reply_text)
+                reply_text = re.sub(r'\*(.+?)\*',     r'\1', reply_text)
+                reply_text = re.sub(r'^#{1,6}\s+',    '',    reply_text, flags=re.MULTILINE)
+                qr = _build_quick_reply([
+                    ("思い出を話す",     "思い出を話す"),
+                    ("別の出来事を教えて", "昭和今日は何の日"),
+                    ("昭和の歌を聴く",   "昭和の歌"),
+                    _QR_BACK,
+                ])
+                try:
+                    line_bot_api.reply_message(r_token, TextSendMessage(text=reply_text, quick_reply=qr))
+                except Exception:
+                    safe_push_message(uid, [TextSendMessage(text=reply_text, quick_reply=qr)], uinfo)
+            except Exception as e:
+                logging.exception("showa today error: %s", e)
+
+        threading.Thread(
+            target=_showa_today_process,
+            args=(user_id, user_info, event.reply_token, _name, _era, today),
+            daemon=True,
+        ).start()
         return
 
     # 旅行提案
@@ -2783,20 +3479,367 @@ def handle_message(event):
         line_bot_api.reply_message(event.reply_token, _flex_travel_menu())
         return
 
-    # 趣味生きがい
+    # ── 趣味・生きがい（メニュー・状態セット、Claude不要）─────────────────
+
     if msg == "趣味生きがい":
+        _name = (user_info or {}).get("name") or ""
+        name_part = f"{_name}さん、" if _name else ""
+        line_bot_api.reply_message(
+            event.reply_token,
+            [
+                TextSendMessage(text=f"{name_part}趣味や生きがいについて\n一緒に考えましょう😊"),
+                _flex_hobby_menu(_name),
+            ],
+        )
+        return
+
+    if msg == "趣味を探す":
+        _hobby_states.pop(user_id, None)
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="今何か趣味はありますか？😊",
+                quick_reply=_build_quick_reply([
+                    ("昔の趣味を再開したい",     "昔の趣味を再開したい"),
+                    ("新しい趣味を始めたい",     "新しい趣味を始めたい"),
+                    ("体に合った趣味を知りたい", "体に合った趣味を知りたい"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    if msg == "昔の趣味を再開したい":
+        _hobby_states[user_id] = {"step": "awaiting_hobby_reopen"}
         line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(
                 text=(
-                    "どんなことに興味がありますか？😊\n\n"
-                    "・昔好きだったこと\n"
-                    "・やってみたいこと\n\n"
-                    "を教えてください！\n"
-                    "趣味・サークル・講座など\n"
-                    "ぴったりなものをご提案しますよ！"
+                    "どんな趣味をお持ちでしたか？😊\n"
+                    "教えてもらえれば\n"
+                    "再開のお手伝いをしますよ！"
                 ),
                 quick_reply=_build_quick_reply([_QR_BACK]),
+            ),
+        )
+        return
+
+    if msg in ("新しい趣味を始めたい", "別の趣味も見てみる"):
+        _hobby_states.pop(user_id, None)
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="どんなことが好きですか？😊",
+                quick_reply=_build_quick_reply([
+                    ("体を動かすのが好き", "趣味興味:体を動かすのが好き"),
+                    ("手先を使うのが好き", "趣味興味:手先を使うのが好き"),
+                    ("音楽・芸術が好き",   "趣味興味:音楽・芸術が好き"),
+                    ("学ぶことが好き",     "趣味興味:学ぶことが好き"),
+                    ("自然・植物が好き",   "趣味興味:自然・植物が好き"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    if msg == "体に合った趣味を知りたい":
+        _hobby_states.pop(user_id, None)
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "体の状態を教えてください😊\n"
+                    "無理なく楽しめる趣味を\n"
+                    "提案しますよ！"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("膝・腰が痛い",       "趣味体状態:膝・腰が痛い"),
+                    ("目が疲れやすい",     "趣味体状態:目が疲れやすい"),
+                    ("手先が動かしにくい", "趣味体状態:手先が動かしにくい"),
+                    ("特に問題なし",       "趣味体状態:特に問題なし"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    if msg == "教室仲間を探す":
+        _hobby_states.pop(user_id, None)
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="何をお探しですか？😊",
+                quick_reply=_build_quick_reply([
+                    ("趣味の教室を探す",       "趣味の教室を探す"),
+                    ("サークル・クラブを探す", "サークル・クラブを探す"),
+                    ("ボランティアを探す",     "ボランティアを探す"),
+                    ("地域活動を探す",         "地域活動を探す"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    if msg == "趣味の教室を探す":
+        _hobby_states[user_id] = {"step": "awaiting_classroom_name"}
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "どんな教室をお探しですか？😊\n"
+                    "趣味の名前を教えてください"
+                ),
+                quick_reply=_build_quick_reply([_QR_BACK]),
+            ),
+        )
+        return
+
+    if msg == "サークル・クラブを探す":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="どんなサークルをお探しですか？😊",
+                quick_reply=_build_quick_reply([
+                    ("スポーツ・体操", "サークル選択:スポーツ・体操"),
+                    ("文化・芸術",     "サークル選択:文化・芸術"),
+                    ("音楽・カラオケ", "サークル選択:音楽・カラオケ"),
+                    ("園芸・料理",     "サークル選択:園芸・料理"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    if msg == "ボランティアを探す":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="素晴らしいですね😊\nどんな活動に興味がありますか？",
+                quick_reply=_build_quick_reply([
+                    ("子どもに関わる活動",     "ボランティア選択:子どもに関わる活動"),
+                    ("高齢者支援",             "ボランティア選択:高齢者支援"),
+                    ("環境・清掃活動",         "ボランティア選択:環境・清掃活動"),
+                    ("地域のお祭り・イベント", "ボランティア選択:地域のお祭り・イベント"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    if msg == "地域活動を探す":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "地域活動への参加は\n"
+                    "素晴らしいですね😊\n\n"
+                    "以下から探してみましょう！"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("町内会・自治会に参加する",   "地域活動選択:町内会・自治会に参加する"),
+                    ("老人クラブに参加する",       "地域活動選択:老人クラブに参加する"),
+                    ("シルバー人材センターで働く", "地域活動選択:シルバー人材センターで働く"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    if msg == "生きがいを見つける":
+        _hobby_states[user_id] = {"step": "awaiting_ikigai"}
+        _name = (user_info or {}).get("name") or ""
+        name_part = f"{_name}さんの" if _name else "あなたの"
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    f"{name_part}人生経験は\n"
+                    "とても素晴らしいですよ😊\n"
+                    "一緒に生きがいを見つけましょう！\n\n"
+                    "これまでの人生で\n"
+                    "一番楽しかったことや\n"
+                    "得意だったことは何ですか？😊\n"
+                    "どんな小さなことでも\n"
+                    "大丈夫ですよ！"
+                ),
+                quick_reply=_build_quick_reply([_QR_BACK]),
+            ),
+        )
+        return
+
+    if msg == "スケジュール登録":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "目標をスケジュールに\n"
+                    "入れておきましょう😊\n"
+                    "Googleカレンダーで管理できますよ！"
+                ),
+                quick_reply=QuickReply(items=[
+                    QuickReplyButton(action=URIAction(
+                        label="📅 カレンダーを開く",
+                        uri="https://liff.line.me/2009711933-tXV7CqW9/calendar",
+                    )),
+                    QuickReplyButton(action=MessageAction(label="🏠 最初に戻る", text="最初に戻る")),
+                ]),
+            ),
+        )
+        return
+
+    # 趣味興味選択（「新しい趣味を始めたい」STEP2 → STEP3）
+    if msg.startswith("趣味興味:"):
+        interest = msg[len("趣味興味:"):]
+        _hobby_states[user_id] = {"step": "awaiting_fitness", "data": {"interest": interest}}
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "体の状態を教えてください😊\n"
+                    "無理なく楽しめる趣味を\n"
+                    "提案しますよ！"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("活動的に動ける",        "趣味体力:活動的に動ける"),
+                    ("軽めの運動なら大丈夫",  "趣味体力:軽めの運動なら大丈夫"),
+                    ("座ってできることがいい", "趣味体力:座ってできることがいい"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    # サークル選択（Maps URL表示）
+    if msg.startswith("サークル選択:"):
+        circle_type = msg[len("サークル選択:"):]
+        maps_kominkan = _maps_url("公民館", user_info, 14)
+        maps_rojin = _maps_url("老人センター", user_info, 14)
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    f"{circle_type}のサークルを探しましょう😊\n"
+                    "お住まいの地域の\n"
+                    "公民館や老人センターに\n"
+                    "問い合わせるのがおすすめですよ！"
+                ),
+                quick_reply=QuickReply(items=[
+                    QuickReplyButton(action=URIAction(label="🗺️ 地図で探す", uri=maps_kominkan)),
+                    QuickReplyButton(action=URIAction(label="🏠 老人センターを探す", uri=maps_rojin)),
+                    QuickReplyButton(action=MessageAction(label="🏠 最初に戻る", text="最初に戻る")),
+                ]),
+            ),
+        )
+        return
+
+    # ボランティア選択（Maps URL表示）
+    if msg.startswith("ボランティア選択:"):
+        vol_type = msg[len("ボランティア選択:"):]
+        maps_shakyo = _maps_url("社会福祉協議会", user_info, 13)
+        maps_vol = _maps_url("ボランティアセンター", user_info, 13)
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    f"{vol_type}のボランティアを探しましょう😊\n"
+                    "まず地域の社会福祉協議会に\n"
+                    "相談するのがおすすめですよ！"
+                ),
+                quick_reply=QuickReply(items=[
+                    QuickReplyButton(action=URIAction(label="🏛️ 社会福祉協議会を探す", uri=maps_shakyo)),
+                    QuickReplyButton(action=URIAction(label="🤝 ボランティアセンターを探す", uri=maps_vol)),
+                    QuickReplyButton(action=MessageAction(label="🏠 最初に戻る", text="最初に戻る")),
+                ]),
+            ),
+        )
+        return
+
+    # 地域活動選択（Maps URL表示）
+    if msg.startswith("地域活動選択:"):
+        activity = msg[len("地域活動選択:"):]
+        if "町内会" in activity or "自治会" in activity:
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(
+                    text=(
+                        "お住まいの地域の\n"
+                        "町内会・自治会に\n"
+                        "直接問い合わせてみてください😊\n"
+                        "市役所でも紹介してもらえますよ"
+                    ),
+                    quick_reply=QuickReply(items=[
+                        QuickReplyButton(action=URIAction(
+                            label="🏛️ 市役所を探す",
+                            uri=_maps_url("市役所", user_info, 14),
+                        )),
+                        QuickReplyButton(action=MessageAction(label="🏠 最初に戻る", text="最初に戻る")),
+                    ]),
+                ),
+            )
+        elif "老人クラブ" in activity:
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(
+                    text=(
+                        "地域の老人クラブは\n"
+                        "60歳以上の方が参加できますよ😊\n"
+                        "旅行・スポーツ・文化活動など\n"
+                        "楽しいイベントがたくさんあります！"
+                    ),
+                    quick_reply=QuickReply(items=[
+                        QuickReplyButton(action=URIAction(
+                            label="🗺️ 老人センターを探す",
+                            uri=_maps_url("老人センター", user_info, 14),
+                        )),
+                        QuickReplyButton(action=MessageAction(label="🏠 最初に戻る", text="最初に戻る")),
+                    ]),
+                ),
+            )
+        else:  # シルバー人材センター
+            line_bot_api.reply_message(
+                event.reply_token,
+                TextSendMessage(
+                    text=(
+                        "シルバー人材センターでは\n"
+                        "自分のペースで働けますよ😊\n"
+                        "庭の手入れ・家事・清掃など\n"
+                        "様々なお仕事があります！"
+                    ),
+                    quick_reply=QuickReply(items=[
+                        QuickReplyButton(action=URIAction(
+                            label="🗺️ シルバー人材センターを探す",
+                            uri=_maps_url("シルバー人材センター", user_info, 13),
+                        )),
+                        QuickReplyButton(action=MessageAction(label="🏠 最初に戻る", text="最初に戻る")),
+                    ]),
+                ),
+            )
+        return
+
+    # 教室名入力待ち（Maps URL表示、Claude不要）
+    _hob_pre = _hobby_states.get(user_id)
+    if _hob_pre and _hob_pre.get("step") == "awaiting_classroom_name":
+        _hobby_states.pop(user_id, None)
+        class_type = msg
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=f"{class_type}の教室を探しましょう😊",
+                quick_reply=QuickReply(items=[
+                    QuickReplyButton(action=URIAction(
+                        label="🗺️ 地図で近くの教室を探す",
+                        uri=_maps_url(f"{class_type}教室", user_info, 14),
+                    )),
+                    QuickReplyButton(action=URIAction(
+                        label="🏛️ 公民館・市民センターで探す",
+                        uri=_maps_url("公民館", user_info, 14),
+                    )),
+                    QuickReplyButton(action=URIAction(
+                        label="🏠 老人センターで探す",
+                        uri=_maps_url("老人センター", user_info, 14),
+                    )),
+                    QuickReplyButton(action=MessageAction(label="🏠 最初に戻る", text="最初に戻る")),
+                ]),
             ),
         )
         return
@@ -2889,6 +3932,215 @@ def handle_message(event):
 
     # 会話継続中かどうかを判定（直前がAIの返信かつ30分以内）
     in_conversation = _is_conversation_active(user_id)
+
+    # ── 昭和モード継続 ────────────────────────────────────────────────
+    # 「思い出を話す」または昭和セッション中の自由発話は Claude Sonnet で処理
+    if msg == "思い出を話す" or user_id in _showa_sessions:
+        if user_id not in _showa_sessions:
+            # セッション外から「思い出を話す」が来た場合は昭和トーク開始にリダイレクト
+            _birth  = (user_info or {}).get("birthdate", "")
+            _gender = (user_info or {}).get("gender")
+            _era    = _get_era_from_birthdate(_birth)
+            _showa_sessions[user_id] = {"era": _era, "gender": _gender, "topic": ""}
+
+        def _showa_cont_process(uid, message, uinfo, r_token):
+            try:
+                reply_text = get_showa_reply(uid, message, uinfo)
+                qr = _build_quick_reply([
+                    ("もっと話す",     "もっと話す"),
+                    ("別の昭和の話題", "別の昭和の話題"),
+                    ("昭和の歌を聴く", "昭和の歌"),
+                    _QR_BACK,
+                ])
+                try:
+                    line_bot_api.reply_message(r_token, TextSendMessage(text=reply_text, quick_reply=qr))
+                except Exception:
+                    safe_push_message(uid, [TextSendMessage(text=reply_text, quick_reply=qr)], uinfo)
+            except Exception as e:
+                logging.exception("showa cont error: %s", e)
+
+        threading.Thread(
+            target=_showa_cont_process,
+            args=(user_id, user_message, user_info, event.reply_token),
+            daemon=True,
+        ).start()
+        return
+
+    # ── 趣味・生きがい（Claude呼び出しあり）────────────────────────────
+
+    # 状態ベース：昔の趣味再開・生きがい（自由入力 → Claude Sonnet）
+    _hob = _hobby_states.get(user_id)
+    if _hob:
+        _hob_step = _hob.get("step")
+
+        if _hob_step == "awaiting_hobby_reopen":
+            _hobby_states.pop(user_id, None)
+            hobby_name = msg
+            _name = (user_info or {}).get("name") or ""
+
+            def _reopen_proc(uid, uinfo, r_token, hname, name):
+                try:
+                    prompt = (
+                        f"{name}さんが「{hname}」を再開したいそうです。\n"
+                        "再開のためのアドバイスをお願いします。"
+                        if name else
+                        f"「{hname}」を再開したい方へのアドバイスをお願いします。"
+                    )
+                    reply_text = _hobby_claude_text(HOBBY_SYSTEM_REOPEN, prompt)
+                    qr = _build_quick_reply([
+                        ("教室・仲間を探す",    "教室仲間を探す"),
+                        ("詳しく教えて",        f"趣味詳細:{hname}"),
+                        ("他の趣味も見てみる",  "趣味を探す"),
+                        _QR_BACK,
+                    ])
+                    try:
+                        line_bot_api.reply_message(r_token, TextSendMessage(text=reply_text, quick_reply=qr))
+                    except Exception:
+                        safe_push_message(uid, [TextSendMessage(text=reply_text, quick_reply=qr)], uinfo)
+                except Exception as e:
+                    logging.exception("hobby reopen error: %s", e)
+
+            threading.Thread(
+                target=_reopen_proc,
+                args=(user_id, user_info, event.reply_token, hobby_name, _name),
+                daemon=True,
+            ).start()
+            return
+
+        if _hob_step == "awaiting_ikigai":
+            _hobby_states.pop(user_id, None)
+            ikigai_text = msg
+            _name = (user_info or {}).get("name") or ""
+
+            def _ikigai_proc(uid, uinfo, r_token, text, name):
+                try:
+                    prompt = (
+                        f"{name}さんからこんな話を聞かせてもらいました。\n\n{text}"
+                        if name else
+                        f"以下の話を聞かせてもらいました。\n\n{text}"
+                    )
+                    reply_text = _hobby_claude_text(HOBBY_SYSTEM_IKIGAI, prompt)
+                    qr = _build_quick_reply([
+                        ("もっと詳しく聞く",       "もっと詳しく教えてください"),
+                        ("教室・仲間を探す",       "教室仲間を探す"),
+                        ("スケジュールに入れる",   "スケジュール登録"),
+                        _QR_BACK,
+                    ])
+                    try:
+                        line_bot_api.reply_message(r_token, TextSendMessage(text=reply_text, quick_reply=qr))
+                    except Exception:
+                        safe_push_message(uid, [TextSendMessage(text=reply_text, quick_reply=qr)], uinfo)
+                except Exception as e:
+                    logging.exception("ikigai proc error: %s", e)
+
+            threading.Thread(
+                target=_ikigai_proc,
+                args=(user_id, user_info, event.reply_token, ikigai_text, _name),
+                daemon=True,
+            ).start()
+            return
+
+    # 体力選択 → Claude Sonnetで趣味提案カルーセル
+    if msg.startswith("趣味体力:"):
+        fitness = msg[len("趣味体力:"):]
+        _hob_state = _hobby_states.pop(user_id, {})
+        interest = _hob_state.get("data", {}).get("interest", "なんでも")
+        _birth = (user_info or {}).get("birthdate", "")
+        _era = _get_era_from_birthdate(_birth)
+        age_approx = 2025 - _era
+
+        def _fitness_proc(uid, uinfo, r_token, intr, fit, age):
+            try:
+                proposals = _hobby_proposal_list(intr, fit, age)
+                carousel = _flex_hobby_proposals(proposals)
+                try:
+                    line_bot_api.reply_message(r_token, [
+                        TextSendMessage(text="あなたにぴったりの趣味を\n3つ提案しますね😊"),
+                        carousel,
+                    ])
+                except Exception:
+                    safe_push_message(uid, [carousel], uinfo)
+            except Exception as e:
+                logging.exception("hobby fitness proc error: %s", e)
+
+        threading.Thread(
+            target=_fitness_proc,
+            args=(user_id, user_info, event.reply_token, interest, fitness, age_approx),
+            daemon=True,
+        ).start()
+        return
+
+    # 体の状態選択 → Claude Sonnetで趣味提案カルーセル
+    if msg.startswith("趣味体状態:"):
+        condition = msg[len("趣味体状態:"):]
+        _birth = (user_info or {}).get("birthdate", "")
+        _era = _get_era_from_birthdate(_birth)
+        age_approx = 2025 - _era
+
+        def _condition_proc(uid, uinfo, r_token, cond, age):
+            try:
+                proposals = _hobby_proposal_list(f"体の状態：{cond}", "", age)
+                carousel = _flex_hobby_proposals(proposals)
+                try:
+                    line_bot_api.reply_message(r_token, [
+                        TextSendMessage(text="体の状態に合った趣味を\n提案しますね😊"),
+                        carousel,
+                    ])
+                except Exception:
+                    safe_push_message(uid, [carousel], uinfo)
+            except Exception as e:
+                logging.exception("hobby condition proc error: %s", e)
+
+        threading.Thread(
+            target=_condition_proc,
+            args=(user_id, user_info, event.reply_token, condition, age_approx),
+            daemon=True,
+        ).start()
+        return
+
+    # 趣味詳細
+    if msg.startswith("趣味詳細:"):
+        hobby_name = msg[len("趣味詳細:"):]
+        _name = (user_info or {}).get("name") or ""
+
+        def _detail_proc(uid, uinfo, r_token, hname, name):
+            try:
+                prompt = (
+                    f"{name}さんが「{hname}」について詳しく聞きたいそうです。\n"
+                    "以下の形式で答えてください（マークダウン禁止）：\n"
+                    f"{hname}についてご説明しますね😊\n\n"
+                    "始め方：\n具体的な3ステップ\n\n"
+                    "必要なもの・費用：\n目安を具体的に\n\n"
+                    "体への効果：\n健康・認知症予防など\n\n"
+                    "お住まいの地域での楽しみ方：\n地域の教室・公園など"
+                    if name else
+                    f"「{hname}」について詳しく教えてください。\n"
+                    "以下の形式で答えてください（マークダウン禁止）：\n"
+                    f"{hname}についてご説明しますね😊\n\n"
+                    "始め方：\n具体的な3ステップ\n\n"
+                    "必要なもの・費用：\n目安を具体的に\n\n"
+                    "体への効果：\n健康・認知症予防など\n\n"
+                    "お住まいの地域での楽しみ方：\n地域の教室・公園など"
+                )
+                reply_text = _hobby_claude_text(HOBBY_SYSTEM_DETAIL, prompt)
+                qr = _build_quick_reply([
+                    ("教室・仲間を探す",    "教室仲間を探す"),
+                    ("別の趣味も見てみる",  "新しい趣味を始めたい"),
+                    _QR_BACK,
+                ])
+                try:
+                    line_bot_api.reply_message(r_token, TextSendMessage(text=reply_text, quick_reply=qr))
+                except Exception:
+                    safe_push_message(uid, [TextSendMessage(text=reply_text, quick_reply=qr)], uinfo)
+            except Exception as e:
+                logging.exception("hobby detail error: %s", e)
+
+        threading.Thread(
+            target=_detail_proc,
+            args=(user_id, user_info, event.reply_token, hobby_name, _name),
+            daemon=True,
+        ).start()
+        return
 
     # ── 健康相談トリアージ（状態ベース）────────────────────────────────
     _hstate = _health_states.get(user_id)
