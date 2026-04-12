@@ -165,6 +165,8 @@ _hobby_states: dict[str, dict] = {}
 _music_states: dict[str, dict] = {}
 # 旅行相談の途中状態: {user_id: {"type": str, "fitness": str, "budget": str}}
 _travel_states: dict[str, dict] = {}
+# 探す・フリー検索の途中状態: {user_id: True}
+_search_states: dict[str, bool] = {}
 
 # ユーザー情報キャッシュ: {user_id: {"name": str, "region": str} | None}
 user_cache: dict[str, dict | None] = {}
@@ -589,23 +591,56 @@ def _flex_consult_menu() -> FlexSendMessage:
 
 
 def _flex_search_menu() -> FlexSendMessage:
-    """②探す：ナビカード＋3カード"""
-    bubbles = [
-        _retro_nav_bubble("ショートカット", [
-            ("和食がいい",           "和食のお店を教えてください"),
-            ("いま開いている所",     "今開いているお店を教えてください"),
-            ("🏠 最初に戻る",        "最初に戻る"),
-        ]),
-        _make_card_bubble("🍽️", "近くの美味しいお店", "和食・洋食・カフェなど\nおすすめを教えます",
-                          "近くの美味しいお店を教えてください", "", _card_icon("restaurant.png")),
-        _make_card_bubble("🏥", "近くの病院", "内科・整形外科など\n診療科で探せます",
-                          "近くの病院を教えてください", "", _card_icon("hospital.png")),
-        _make_card_bubble("🏛️", "公共施設・公園", "市役所・図書館・公園など\n近くの施設を案内",
-                          "近くの公共施設や公園を教えてください", "", _card_icon("facility.png")),
-    ]
+    """②探す：7ボタン1バブル（ショートカットメニュー）"""
+    _BTN_COLOR = "#4A2C0A"
+
+    def _btn(label: str, text: str) -> dict:
+        return {
+            "type": "button",
+            "style": "primary",
+            "color": _BTN_COLOR,
+            "height": "sm",
+            "margin": "sm",
+            "action": {"type": "message", "label": label, "text": text},
+        }
+
+    bubble = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#4A2C0A",
+            "paddingAll": "md",
+            "contents": [{
+                "type": "text",
+                "text": "何をお探しですか？😊",
+                "color": "#F5E6A3",
+                "weight": "bold",
+                "size": "md",
+                "wrap": True,
+                "align": "center",
+            }],
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#F5E6A3",
+            "paddingAll": "md",
+            "spacing": "none",
+            "contents": [
+                _btn("🏥 病院・クリニック",      "病院を探す"),
+                _btn("💊 薬局・ドラッグストア",  "薬局を探す"),
+                _btn("🛒 スーパー・買い物",       "買い物を探す"),
+                _btn("🍽️ 飲食店・カフェ",        "飲食店を探す"),
+                _btn("🏛️ 公共施設",             "公共施設を探す"),
+                _btn("📚 習い事・教室",           "習い事を探す"),
+                _btn("🔍 なんでも探す",           "なんでも探す"),
+            ],
+        },
+    }
     return FlexSendMessage(
-        alt_text="何をお探しですか？",
-        contents={"type": "carousel", "contents": bubbles},
+        alt_text="何をお探しですか？😊",
+        contents=bubble,
     )
 
 
@@ -2792,6 +2827,7 @@ def handle_message(event):
         _hobby_states.pop(user_id, None)     # 趣味セッションをクリア
         _music_states.pop(user_id, None)     # 動画・音楽セッションをクリア
         _travel_states.pop(user_id, None)    # 旅行セッションをクリア
+        _search_states.pop(user_id, None)    # フリー検索セッションをクリア
         _clear_history(user_id)
         line_bot_api.reply_message(
             event.reply_token,
@@ -2809,7 +2845,135 @@ def handle_message(event):
 
     # ② 探す
     if msg == "探す":
+        _search_states.pop(user_id, None)
         line_bot_api.reply_message(event.reply_token, _flex_search_menu())
+        return
+
+    # 探す：6カテゴリ → Google Maps URL（APIコストゼロ）
+    _SEARCH_MAPS = {
+        "病院を探す":     ("🏥 近くの病院",             "病院"),
+        "薬局を探す":     ("💊 近くの薬局・ドラッグストア", "薬局"),
+        "買い物を探す":   ("🛒 近くのスーパー・買い物",   "スーパー"),
+        "飲食店を探す":   ("🍽️ 近くの飲食店・カフェ",    "飲食店"),
+        "公共施設を探す": ("🏛️ 近くの公共施設",          "公共施設"),
+        "習い事を探す":   ("📚 近くの習い事・教室",       "カルチャーセンター"),
+    }
+    if msg in _SEARCH_MAPS:
+        label, keyword = _SEARCH_MAPS[msg]
+        map_uri = _maps_url(keyword, user_info, 14)
+        line_bot_api.reply_message(
+            event.reply_token,
+            FlexSendMessage(
+                alt_text=f"{label}を地図で探します😊",
+                contents={
+                    "type": "bubble",
+                    "body": {
+                        "type": "box",
+                        "layout": "vertical",
+                        "backgroundColor": "#F5E6A3",
+                        "paddingAll": "lg",
+                        "spacing": "md",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": f"{label}を\n地図で探しましょう😊",
+                                "weight": "bold",
+                                "size": "md",
+                                "color": "#4A2C0A",
+                                "wrap": True,
+                                "align": "center",
+                            },
+                            {
+                                "type": "button",
+                                "style": "primary",
+                                "color": "#4A2C0A",
+                                "margin": "md",
+                                "action": {
+                                    "type": "uri",
+                                    "label": "🗺️ 地図を開く",
+                                    "uri": map_uri,
+                                },
+                            },
+                            {
+                                "type": "button",
+                                "style": "secondary",
+                                "margin": "sm",
+                                "action": {
+                                    "type": "message",
+                                    "label": "← 探すメニューに戻る",
+                                    "text": "探す",
+                                },
+                            },
+                        ],
+                    },
+                },
+            ),
+        )
+        return
+
+    # 探す：なんでも探す → フリー入力受付
+    if msg == "なんでも探す":
+        _search_states[user_id] = True
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text="何をお探しですか？\nお気軽にどうぞ😊\n\n例）コンビニ・郵便局・公園\nなど何でも入力してください",
+                quick_reply=_build_quick_reply([_QR_BACK]),
+            ),
+        )
+        return
+
+    # 探す：フリー入力 → Google Maps URLを返す
+    if _search_states.pop(user_id, False):
+        map_uri = _maps_url(msg, user_info, 14)
+        line_bot_api.reply_message(
+            event.reply_token,
+            FlexSendMessage(
+                alt_text=f"「{msg}」を地図で探します😊",
+                contents={
+                    "type": "bubble",
+                    "body": {
+                        "type": "box",
+                        "layout": "vertical",
+                        "backgroundColor": "#F5E6A3",
+                        "paddingAll": "lg",
+                        "spacing": "md",
+                        "contents": [
+                            {
+                                "type": "text",
+                                "text": f"「{msg}」を\n地図で探しましょう😊",
+                                "weight": "bold",
+                                "size": "md",
+                                "color": "#4A2C0A",
+                                "wrap": True,
+                                "align": "center",
+                            },
+                            {
+                                "type": "button",
+                                "style": "primary",
+                                "color": "#4A2C0A",
+                                "margin": "md",
+                                "action": {
+                                    "type": "uri",
+                                    "label": "🗺️ 地図を開く",
+                                    "uri": map_uri,
+                                },
+                            },
+                            {
+                                "type": "button",
+                                "style": "secondary",
+                                "margin": "sm",
+                                "action": {
+                                    "type": "message",
+                                    "label": "← 探すメニューに戻る",
+                                    "text": "探す",
+                                },
+                            },
+                        ],
+                    },
+                },
+            ),
+        )
         return
 
     # ③ 知る
