@@ -784,21 +784,56 @@ def _flex_ai_direct_menu(name: str = "") -> FlexSendMessage:
 # ── 新メニュー用フレックスメッセージ ───────────────────────────────
 
 def _flex_ai_consult_first() -> FlexSendMessage:
-    """AIに相談・初回：3枚カード（どんなことを聞けるか紹介）"""
-    bubbles = [
-        _make_card_bubble("🏥", "健康・からだのこと",
-                          "体の症状・薬・病院・\n運動など何でも",
-                          "健康について相談したいです"),
-        _make_card_bubble("🏘️", "地元・生活のこと",
-                          "お店・行政・ゴミ出し・\nイベントなど",
-                          "地元の生活について教えてください"),
-        _make_card_bubble("💬", "なんでも話しかける",
-                          "困りごと・悩み・\n何でもどうぞ！",
-                          "話しかける"),
-    ]
+    """AIに相談：7ボタン1バブル（ショートカットメニュー）"""
+    _BTN_COLOR = "#4A2C0A"
+
+    def _btn(label: str, text: str) -> dict:
+        return {
+            "type": "button",
+            "style": "primary",
+            "color": _BTN_COLOR,
+            "height": "sm",
+            "margin": "sm",
+            "action": {"type": "message", "label": label, "text": text},
+        }
+
+    bubble = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#4A2C0A",
+            "paddingAll": "md",
+            "contents": [{
+                "type": "text",
+                "text": "何についてお聞きになりますか？😊",
+                "color": "#F5E6A3",
+                "weight": "bold",
+                "size": "md",
+                "wrap": True,
+                "align": "center",
+            }],
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": "#F5E6A3",
+            "paddingAll": "md",
+            "spacing": "none",
+            "contents": [
+                _btn("🩺 からだの不調",    "健康相談"),
+                _btn("🏥 病院・お薬",      "病院お薬相談"),
+                _btn("🍳 食事・栄養",      "食事レシピ"),
+                _btn("💴 お金・手続き",    "お金手続き相談"),
+                _btn("👨‍👩‍👧 家族・人間関係", "家族関係相談"),
+                _btn("😔 気持ち・不安",    "気持ち不安相談"),
+                _btn("💬 なんでも相談",    "なんでも相談"),
+            ],
+        },
+    }
     return FlexSendMessage(
-        alt_text="例えばこんなことを聞けます",
-        contents={"type": "carousel", "contents": bubbles},
+        alt_text="何についてお聞きになりますか？😊",
+        contents=bubble,
     )
 
 
@@ -3189,6 +3224,100 @@ def handle_message(event):
     # 健康相談（入口）
     if msg == "健康相談":
         line_bot_api.reply_message(event.reply_token, _flex_health_menu())
+        return
+
+    # 病院・お薬（AIに相談フレックスからの入口）
+    if msg == "病院お薬相談":
+        line_bot_api.reply_message(event.reply_token, _flex_health_hospital_menu())
+        return
+
+    # お金・手続き相談
+    if msg == "お金手続き相談":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "お金や手続きについてですね😊\n"
+                    "どんなことでお困りですか？\n\n"
+                    "よくある相談を選んでもいいですし\n"
+                    "直接話しかけてもらってもOKですよ！"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("年金について",       "年金について教えてください"),
+                    ("医療費・保険",       "医療費や保険について教えてください"),
+                    ("給付金・補助金",     "給付金や補助金について教えてください"),
+                    ("相続・遺言",         "相続や遺言について教えてください"),
+                    ("確定申告・税金",     "確定申告や税金について教えてください"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    # 家族・人間関係相談
+    if msg == "家族関係相談":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "家族や人間関係のことですね😊\n"
+                    "どんなことでお困りですか？\n\n"
+                    "どんな小さなことでも\n遠慮なく話してください"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("子どもとの関係",     "子どもとの関係について相談したいです"),
+                    ("夫婦のこと",         "夫婦のことについて相談したいです"),
+                    ("介護のこと",         "介護について相談したいです"),
+                    ("近所付き合い",       "近所付き合いについて相談したいです"),
+                    ("孤独・ひとりぼっち", "一人で寂しいです"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    # 気持ち・不安相談（共感優先）
+    if msg == "気持ち不安相談":
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    "気持ちや不安なことを\n話してくださいね😊\n\n"
+                    "ここでは何でも話せますよ。\n"
+                    "ゆっくり聞かせてください"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("なんとなく不安",     "なんとなく不安な気持ちです"),
+                    ("気力がわかない",     "最近気力がわかなくて困っています"),
+                    ("眠れない",           "なかなか眠れなくて困っています"),
+                    ("話を聞いてほしい",   "ただ話を聞いてほしいです"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
+        return
+
+    # なんでも相談（フリー入力誘導）
+    if msg == "なんでも相談":
+        _name = (user_info or {}).get("name") or ""
+        name_call = f"{_name}さん" if _name else "あなた"
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(
+                text=(
+                    f"{name_call}、何でも話しかけてくださいね😊\n\n"
+                    "困りごと・疑問・雑談\n"
+                    "どんなことでもOKですよ！"
+                ),
+                quick_reply=_build_quick_reply([
+                    ("今日の天気",         "今日の天気を教えてください"),
+                    ("おすすめレシピ",     "今日のおすすめレシピを教えてください"),
+                    ("地元の情報",         "地元の情報を教えてください"),
+                    ("雑談したい",         "少し雑談しませんか"),
+                    _QR_BACK,
+                ]),
+            ),
+        )
         return
 
     # ── 健康相談サブメニュー（利用カウント不要）────────────────────────
