@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>マイページ</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans",
+                   "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+      background: #F5E6A3;
+      font-size: 18px;
+      color: #4A2C0A;
+      line-height: 1.8;
+      padding-bottom: 40px;
+    }
+
+    /* ヘッダー */
+    #header {
+      background: #8B1A1A;
+      color: #FFD700;
+      padding: 20px 16px;
+      text-align: center;
+    }
+    #header h1 { font-size: 24px; font-weight: bold; margin-bottom: 4px; }
+    #header p  { font-size: 16px; color: rgba(255,255,255,0.85); }
+
+    /* カード共通 */
+    .card {
+      background: #FFFDF0;
+      border: 2px solid #C9A84C;
+      border-radius: 12px;
+      margin: 12px 16px;
+      padding: 16px;
+    }
+    .card-title {
+      font-size: 16px;
+      font-weight: bold;
+      color: #8B1A1A;
+      border-bottom: 1px solid #C9A84C;
+      padding-bottom: 8px;
+      margin-bottom: 12px;
+    }
+
+    /* 利用状況カード */
+    .usage-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      border-bottom: 1px dotted #C9A84C;
+      font-size: 18px;
+    }
+    .usage-row:last-child { border-bottom: none; }
+    .usage-num {
+      font-size: 28px;
+      font-weight: bold;
+      color: #8B1A1A;
+    }
+    .plan-badge {
+      display: inline-block;
+      background: #8B1A1A;
+      color: #FFD700;
+      font-size: 14px;
+      font-weight: bold;
+      padding: 3px 10px;
+      border-radius: 20px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    .plan-badge.free {
+      background: #666;
+      color: white;
+    }
+
+    /* プロフィールカード */
+    .profile-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px dotted #C9A84C;
+      font-size: 18px;
+    }
+    .profile-row:last-child { border-bottom: none; }
+    .profile-label { color: #7a5c1e; font-size: 16px; min-width: 80px; }
+    .profile-value { font-weight: bold; color: #4A2C0A; text-align: right; }
+
+    /* 編集メニュー */
+    .edit-menu-btn {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      background: none;
+      border: none;
+      border-bottom: 1px dotted #C9A84C;
+      padding: 12px 4px;
+      font-size: 18px;
+      color: #4A2C0A;
+      cursor: pointer;
+      text-align: left;
+    }
+    .edit-menu-btn:last-child { border-bottom: none; }
+    .edit-menu-btn .arrow { color: #8B1A1A; font-size: 20px; }
+    .edit-menu-btn:active { background: #f5e6a3; }
+
+    /* 編集フォーム */
+    .edit-form {
+      display: none;
+      margin: 0 16px 12px;
+      background: #FFFDF0;
+      border: 2px solid #8B1A1A;
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .edit-form.active { display: block; }
+    .form-title {
+      font-size: 18px;
+      font-weight: bold;
+      color: #8B1A1A;
+      margin-bottom: 12px;
+    }
+    label {
+      display: block;
+      font-size: 16px;
+      color: #7a5c1e;
+      margin-bottom: 4px;
+      margin-top: 12px;
+    }
+    input[type="text"], input[type="number"], select {
+      width: 100%;
+      height: 48px;
+      font-size: 18px;
+      padding: 8px 12px;
+      border: 2px solid #C9A84C;
+      border-radius: 8px;
+      background: white;
+      color: #4A2C0A;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: #8B1A1A;
+    }
+
+    /* 誕生日 */
+    .birthday-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .birthday-row select { flex: 1; }
+    .birthday-sep { font-size: 20px; color: #8B1A1A; flex-shrink: 0; }
+
+    /* 性別ボタン */
+    .gender-btns {
+      display: flex;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .gender-btn {
+      flex: 1;
+      height: 52px;
+      font-size: 18px;
+      font-weight: bold;
+      background: white;
+      color: #4A2C0A;
+      border: 2px solid #C9A84C;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .gender-btn.selected {
+      background: #8B1A1A;
+      color: #FFD700;
+      border-color: #8B1A1A;
+    }
+    .gender-btn:active { opacity: 0.8; }
+
+    /* 保存ボタン */
+    .btn-save {
+      display: block;
+      width: 100%;
+      height: 56px;
+      font-size: 20px;
+      font-weight: bold;
+      background: #8B1A1A;
+      color: #FFD700;
+      border: none;
+      border-radius: 8px;
+      margin-top: 16px;
+      cursor: pointer;
+    }
+    .btn-save:active { opacity: 0.85; }
+    .btn-cancel {
+      display: block;
+      width: 100%;
+      height: 48px;
+      font-size: 16px;
+      background: white;
+      color: #8B1A1A;
+      border: 2px solid #8B1A1A;
+      border-radius: 8px;
+      margin-top: 8px;
+      cursor: pointer;
+    }
+    .btn-cancel:active { background: #fff0f0; }
+
+    /* 保存メッセージ */
+    .save-ok {
+      display: none;
+      background: #e8f5e9;
+      border: 2px solid #43a047;
+      border-radius: 8px;
+      padding: 10px;
+      color: #2e7d32;
+      text-align: center;
+      font-size: 18px;
+      margin-top: 8px;
+    }
+    .save-err {
+      display: none;
+      background: #fff0f0;
+      border: 2px solid #c62828;
+      border-radius: 8px;
+      padding: 10px;
+      color: #b71c1c;
+      text-align: center;
+      font-size: 16px;
+      margin-top: 8px;
+    }
+
+    /* その他リンク */
+    .other-btn {
+      display: block;
+      width: 100%;
+      height: 56px;
+      font-size: 18px;
+      font-weight: bold;
+      background: #FFFDF0;
+      color: #4A2C0A;
+      border: 2px solid #C9A84C;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      cursor: pointer;
+    }
+    .other-btn:active { background: #f5e6a3; }
+
+    /* プラン変更 */
+    .plan-note {
+      display: none;
+      background: #FFF9C4;
+      border: 2px solid #F59E0B;
+      border-radius: 8px;
+      padding: 12px;
+      color: #92400E;
+      text-align: center;
+      font-size: 18px;
+      margin-top: 8px;
+    }
+
+    /* フッター */
+    #footer {
+      background: #8B1A1A;
+      padding: 16px;
+      text-align: center;
+      margin-top: 8px;
+    }
+    .btn-footer {
+      display: block;
+      width: 100%;
+      height: 56px;
+      font-size: 18px;
+      font-weight: bold;
+      background: #FFD700;
+      color: #4A2C0A;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .btn-footer:active { opacity: 0.85; }
+
+    /* ローディング / エラー */
+    #loader {
+      text-align: center;
+      padding: 60px 16px;
+      font-size: 18px;
+      color: #7a5c1e;
+    }
+    .spinner {
+      display: inline-block;
+      width: 40px; height: 40px;
+      border: 4px solid #C9A84C;
+      border-top-color: #8B1A1A;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #errmsg {
+      display: none;
+      margin: 24px 16px;
+      background: #fff0f0;
+      border: 2px solid #c62828;
+      border-radius: 8px;
+      padding: 20px;
+      color: #b71c1c;
+      text-align: center;
+      font-size: 18px;
+      line-height: 1.7;
+    }
+    #main { display: none; }
+  </style>
+</head>
+<body>
+
+<!-- ヘッダー -->
+<div id="header">
+  <h1>👤 マイページ</h1>
+  <p id="header-name">読み込み中…</p>
+</div>
+
+<!-- ローディング -->
+<div id="loader">
+  <div class="spinner"></div><br>
+  読み込み中…
+</div>
+
+<!-- エラー -->
+<div id="errmsg"></div>
+
+<!-- メインコンテンツ -->
+<div id="main">
+
+  <!-- セクション1: 利用状況カード -->
+  <div class="card">
+    <div class="card-title">📊 今日の利用状況</div>
+    <div class="usage-row">
+      <span>プラン</span>
+      <span>
+        <span id="plan-name">フリー</span>
+        <span id="plan-badge" class="plan-badge free">FREE</span>
+      </span>
+    </div>
+    <div class="usage-row" id="daily-row">
+      <span>今日の残り</span>
+      <span><span id="daily-remaining" class="usage-num">-</span> 回</span>
+    </div>
+    <div class="usage-row">
+      <span>ボーナス残り</span>
+      <span><span id="bonus-count" class="usage-num">-</span> 回</span>
+    </div>
+    <div class="usage-row">
+      <span>合計残り</span>
+      <span><span id="total-remaining" class="usage-num">-</span> 回</span>
+    </div>
+  </div>
+
+  <!-- セクション2: プロフィールカード -->
+  <div class="card">
+    <div class="card-title">👤 プロフィール</div>
+    <div class="profile-row">
+      <span class="profile-label">お名前</span>
+      <span class="profile-value" id="disp-name">-</span>
+    </div>
+    <div class="profile-row">
+      <span class="profile-label">お住まい</span>
+      <span class="profile-value" id="disp-address">-</span>
+    </div>
+    <div class="profile-row">
+      <span class="profile-label">お誕生日</span>
+      <span class="profile-value" id="disp-birthday">-</span>
+    </div>
+    <div class="profile-row">
+      <span class="profile-label">性別</span>
+      <span class="profile-value" id="disp-gender">-</span>
+    </div>
+  </div>
+
+  <!-- セクション3: 編集メニュー -->
+  <div class="card">
+    <div class="card-title">✏️ プロフィールを変更する</div>
+    <button class="edit-menu-btn" onclick="showForm('form-name')">
+      <span>📝 お名前を変更する</span>
+      <span class="arrow">›</span>
+    </button>
+    <button class="edit-menu-btn" onclick="showForm('form-address')">
+      <span>🏠 お住まいを変更する</span>
+      <span class="arrow">›</span>
+    </button>
+    <button class="edit-menu-btn" onclick="showForm('form-birthday')">
+      <span>🎂 お誕生日を変更する</span>
+      <span class="arrow">›</span>
+    </button>
+    <button class="edit-menu-btn" onclick="showForm('form-gender')">
+      <span>👤 性別を変更する</span>
+      <span class="arrow">›</span>
+    </button>
+  </div>
+
+  <!-- セクション4a: お名前編集フォーム -->
+  <div class="edit-form" id="form-name">
+    <div class="form-title">📝 お名前を変更する</div>
+    <label>新しいお名前</label>
+    <input type="text" id="input-name" placeholder="例：田中　花子" maxlength="30">
+    <div id="save-ok-name" class="save-ok">✅ 保存しました！</div>
+    <div id="save-err-name" class="save-err">保存できませんでした。もう一度お試しください。</div>
+    <button class="btn-save" onclick="saveName()">💾 保存する</button>
+    <button class="btn-cancel" onclick="hideForm('form-name')">キャンセル</button>
+  </div>
+
+  <!-- セクション4b: お住まい編集フォーム -->
+  <div class="edit-form" id="form-address">
+    <div class="form-title">🏠 お住まいを変更する</div>
+    <label>都道府県</label>
+    <select id="input-pref">
+      <option value="">選択してください</option>
+      <option>北海道</option><option>青森県</option><option>岩手県</option>
+      <option>宮城県</option><option>秋田県</option><option>山形県</option>
+      <option>福島県</option><option>茨城県</option><option>栃木県</option>
+      <option>群馬県</option><option>埼玉県</option><option>千葉県</option>
+      <option>東京都</option><option>神奈川県</option><option>新潟県</option>
+      <option>富山県</option><option>石川県</option><option>福井県</option>
+      <option>山梨県</option><option>長野県</option><option>岐阜県</option>
+      <option>静岡県</option><option>愛知県</option><option>三重県</option>
+      <option>滋賀県</option><option>京都府</option><option>大阪府</option>
+      <option>兵庫県</option><option>奈良県</option><option>和歌山県</option>
+      <option>鳥取県</option><option>島根県</option><option>岡山県</option>
+      <option>広島県</option><option>山口県</option><option>徳島県</option>
+      <option>香川県</option><option>愛媛県</option><option>高知県</option>
+      <option>福岡県</option><option>佐賀県</option><option>長崎県</option>
+      <option>熊本県</option><option>大分県</option><option>宮崎県</option>
+      <option>鹿児島県</option><option>沖縄県</option>
+    </select>
+    <label>市区町村</label>
+    <input type="text" id="input-city" placeholder="例：藤沢市" maxlength="30">
+    <div id="save-ok-address" class="save-ok">✅ 保存しました！</div>
+    <div id="save-err-address" class="save-err">保存できませんでした。もう一度お試しください。</div>
+    <button class="btn-save" onclick="saveAddress()">💾 保存する</button>
+    <button class="btn-cancel" onclick="hideForm('form-address')">キャンセル</button>
+  </div>
+
+  <!-- セクション4c: 誕生日編集フォーム -->
+  <div class="edit-form" id="form-birthday">
+    <div class="form-title">🎂 お誕生日を変更する</div>
+    <label>生まれ年（西暦）</label>
+    <input type="number" id="input-year" placeholder="例：1945" min="1920" max="2010">
+    <label>月と日</label>
+    <div class="birthday-row">
+      <select id="input-month">
+        <option value="">月</option>
+        <option value="01">1月</option><option value="02">2月</option>
+        <option value="03">3月</option><option value="04">4月</option>
+        <option value="05">5月</option><option value="06">6月</option>
+        <option value="07">7月</option><option value="08">8月</option>
+        <option value="09">9月</option><option value="10">10月</option>
+        <option value="11">11月</option><option value="12">12月</option>
+      </select>
+      <span class="birthday-sep">月</span>
+      <select id="input-day">
+        <option value="">日</option>
+      </select>
+      <span class="birthday-sep">日</span>
+    </div>
+    <div id="birthday-era" style="margin-top:8px;font-size:16px;color:#8B1A1A;font-weight:bold;min-height:24px;"></div>
+    <div id="save-ok-birthday" class="save-ok">✅ 保存しました！</div>
+    <div id="save-err-birthday" class="save-err">保存できませんでした。もう一度お試しください。</div>
+    <button class="btn-save" onclick="saveBirthday()">💾 保存する</button>
+    <button class="btn-cancel" onclick="hideForm('form-birthday')">キャンセル</button>
+  </div>
+
+  <!-- セクション4d: 性別編集フォーム -->
+  <div class="edit-form" id="form-gender">
+    <div class="form-title">👤 性別を変更する</div>
+    <div class="gender-btns">
+      <button class="gender-btn" id="gb-male"   onclick="selectGender('male')">男性</button>
+      <button class="gender-btn" id="gb-female" onclick="selectGender('female')">女性</button>
+      <button class="gender-btn" id="gb-none"   onclick="selectGender('')">答えたくない</button>
+    </div>
+    <div id="save-ok-gender" class="save-ok">✅ 保存しました！</div>
+    <div id="save-err-gender" class="save-err">保存できませんでした。もう一度お試しください。</div>
+    <button class="btn-save" onclick="saveGender()">💾 保存する</button>
+    <button class="btn-cancel" onclick="hideForm('form-gender')">キャンセル</button>
+  </div>
+
+  <!-- セクション5: その他 -->
+  <div class="card">
+    <div class="card-title">🔗 その他</div>
+    <button class="other-btn" onclick="showPlanNote()">💳 プランを変更する</button>
+    <div id="plan-note" class="plan-note">🙏 ただいま準備中です😊<br>もうしばらくお待ちください</div>
+    <button class="other-btn" onclick="goInvite()">👥 友達に紹介する</button>
+  </div>
+
+</div><!-- /main -->
+
+<!-- フッター -->
+<div id="footer">
+  <button class="btn-footer" onclick="closeWindow()">💬 LINEに戻る</button>
+</div>
+
+<script>
+var LIFF_ID = '{{ liff_id }}';
+var _lineUserId = '';
+var _gender = '';
+
+liff.init({ liffId: LIFF_ID })
+  .then(function() {
+    if (!liff.isLoggedIn()) { liff.login(); return; }
+    return liff.getProfile();
+  })
+  .then(function(profile) {
+    if (!profile) return;
+    _lineUserId = profile.userId;
+    return loadMypage(_lineUserId);
+  })
+  .catch(function(e) {
+    showErr('ログインできませんでした。\nLINEアプリから開き直してください。');
+  });
+
+function loadMypage(userId) {
+  return fetch('/liff/api/mypage?line_user_id=' + encodeURIComponent(userId))
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.error) {
+        showErr('ユーザー情報が見つかりません。\nLINEでメッセージを送ってから開いてください。');
+        return;
+      }
+
+      // ヘッダー
+      var name = d.name || 'ゲスト';
+      document.getElementById('header-name').textContent = name + ' さん';
+
+      // 利用状況
+      var isPaid = d.is_paid;
+      document.getElementById('plan-name').textContent = isPaid ? '有料会員' : '無料会員';
+      var badge = document.getElementById('plan-badge');
+      if (isPaid) {
+        badge.textContent = 'PRO';
+        badge.classList.remove('free');
+      } else {
+        badge.textContent = 'FREE';
+        badge.classList.add('free');
+      }
+      document.getElementById('daily-remaining').textContent = isPaid ? '∞' : d.daily_remaining;
+      document.getElementById('bonus-count').textContent = d.bonus_count;
+      document.getElementById('total-remaining').textContent = isPaid ? '∞' : d.total_remaining;
+      if (isPaid) document.getElementById('daily-row').style.display = 'none';
+
+      // プロフィール表示
+      document.getElementById('disp-name').textContent = d.name || '未設定';
+      var addr = [d.prefecture, d.city].filter(Boolean).join('');
+      document.getElementById('disp-address').textContent = addr || '未設定';
+      document.getElementById('disp-birthday').textContent = d.birthday ? toJapaneseEra(d.birthday) : '未設定';
+      var genderMap = { 'male': '男性', 'female': '女性', '': '未設定' };
+      document.getElementById('disp-gender').textContent = genderMap[d.gender] || '未設定';
+
+      // フォーム初期値
+      document.getElementById('input-name').value = d.name || '';
+      document.getElementById('input-pref').value = d.prefecture || '';
+      document.getElementById('input-city').value = d.city || '';
+      if (d.birthday && d.birthday.length === 10) {
+        var parts = d.birthday.split('-');
+        document.getElementById('input-year').value = parts[0];
+        document.getElementById('input-month').value = parts[1];
+        updateDays(parts[0], parts[1], parts[2]);
+      }
+      _gender = d.gender || '';
+      updateGenderBtns();
+
+      document.getElementById('loader').style.display = 'none';
+      document.getElementById('main').style.display = 'block';
+    })
+    .catch(function() {
+      showErr('通信エラーが発生しました。\n再読み込みしてください。');
+    });
+}
+
+// 元号変換
+function toJapaneseEra(dateStr) {
+  if (!dateStr || dateStr.length < 4) return dateStr;
+  var y = parseInt(dateStr.substring(0, 4), 10);
+  var rest = dateStr.length >= 10 ? (parseInt(dateStr.substring(5,7),10) + '月' + parseInt(dateStr.substring(8,10),10) + '日') : '';
+  var era, eraYear;
+  if (y >= 2019) { era = '令和'; eraYear = y - 2018; }
+  else if (y >= 1989) { era = '平成'; eraYear = y - 1988; }
+  else if (y >= 1926) { era = '昭和'; eraYear = y - 1925; }
+  else if (y >= 1912) { era = '大正'; eraYear = y - 1911; }
+  else { era = '明治'; eraYear = y - 1867; }
+  var eraLabel = eraYear === 1 ? era + '元年' : era + eraYear + '年';
+  return eraLabel + (rest ? rest : '') + '（' + y + '年）';
+}
+
+// 誕生日プレビュー
+function updateEraPreview() {
+  var y = document.getElementById('input-year').value;
+  var m = document.getElementById('input-month').value;
+  var d = document.getElementById('input-day').value;
+  var el = document.getElementById('birthday-era');
+  if (y && y.length === 4) {
+    var dateStr = y + (m ? '-' + m : '') + (d ? '-' + d : '');
+    el.textContent = toJapaneseEra(y + (m ? '-' + m : '-01') + (d ? '-' + d : '-01'));
+  } else {
+    el.textContent = '';
+  }
+}
+
+// 日付の日プルダウン更新
+function updateDays(y, m, selectedDay) {
+  var daySelect = document.getElementById('input-day');
+  var days = 31;
+  if (m) {
+    var mi = parseInt(m, 10);
+    var yi = parseInt(y, 10) || 2000;
+    days = new Date(yi, mi, 0).getDate();
+  }
+  var current = selectedDay || daySelect.value;
+  daySelect.innerHTML = '<option value="">日</option>';
+  for (var i = 1; i <= days; i++) {
+    var v = ('0' + i).slice(-2);
+    var opt = document.createElement('option');
+    opt.value = v;
+    opt.textContent = i + '日';
+    if (current === v || current === String(i)) opt.selected = true;
+    daySelect.appendChild(opt);
+  }
+  updateEraPreview();
+}
+
+document.getElementById('input-year').addEventListener('input', function() {
+  updateDays(this.value, document.getElementById('input-month').value, '');
+  updateEraPreview();
+});
+document.getElementById('input-month').addEventListener('change', function() {
+  updateDays(document.getElementById('input-year').value, this.value, '');
+  updateEraPreview();
+});
+document.getElementById('input-day').addEventListener('change', updateEraPreview);
+
+// 性別
+function selectGender(val) {
+  _gender = val;
+  updateGenderBtns();
+}
+function updateGenderBtns() {
+  document.getElementById('gb-male').classList.toggle('selected', _gender === 'male');
+  document.getElementById('gb-female').classList.toggle('selected', _gender === 'female');
+  document.getElementById('gb-none').classList.toggle('selected', _gender === '');
+}
+
+// フォーム表示/非表示
+var _openForm = null;
+function showForm(id) {
+  if (_openForm && _openForm !== id) {
+    document.getElementById(_openForm).classList.remove('active');
+  }
+  document.getElementById(id).classList.toggle('active');
+  _openForm = document.getElementById(id).classList.contains('active') ? id : null;
+  if (_openForm) {
+    document.getElementById(id).scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+function hideForm(id) {
+  document.getElementById(id).classList.remove('active');
+  if (_openForm === id) _openForm = null;
+}
+
+// 保存共通
+function doSave(payload, okId, errId, onSuccess) {
+  payload.line_user_id = _lineUserId;
+  fetch('/liff/api/mypage', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (d.success) {
+      document.getElementById(okId).style.display = 'block';
+      document.getElementById(errId).style.display = 'none';
+      setTimeout(function() { document.getElementById(okId).style.display = 'none'; }, 3000);
+      if (onSuccess) onSuccess();
+    } else {
+      document.getElementById(errId).style.display = 'block';
+    }
+  })
+  .catch(function() {
+    document.getElementById(errId).style.display = 'block';
+  });
+}
+
+function saveName() {
+  var name = document.getElementById('input-name').value.trim();
+  if (!name) return;
+  doSave({ name: name }, 'save-ok-name', 'save-err-name', function() {
+    document.getElementById('disp-name').textContent = name;
+    document.getElementById('header-name').textContent = name + ' さん';
+  });
+}
+
+function saveAddress() {
+  var pref = document.getElementById('input-pref').value;
+  var city = document.getElementById('input-city').value.trim();
+  doSave({ prefecture: pref, city: city }, 'save-ok-address', 'save-err-address', function() {
+    var addr = [pref, city].filter(Boolean).join('');
+    document.getElementById('disp-address').textContent = addr || '未設定';
+  });
+}
+
+function saveBirthday() {
+  var y = document.getElementById('input-year').value;
+  var m = document.getElementById('input-month').value;
+  var d = document.getElementById('input-day').value;
+  if (!y || y.length !== 4) return;
+  var iso = y + '-' + (m || '01') + '-' + (d || '01');
+  doSave({ birthday: iso }, 'save-ok-birthday', 'save-err-birthday', function() {
+    document.getElementById('disp-birthday').textContent = toJapaneseEra(iso);
+  });
+}
+
+function saveGender() {
+  doSave({ gender: _gender }, 'save-ok-gender', 'save-err-gender', function() {
+    var genderMap = { 'male': '男性', 'female': '女性', '': '未設定' };
+    document.getElementById('disp-gender').textContent = genderMap[_gender] || '未設定';
+  });
+}
+
+// プラン変更
+function showPlanNote() {
+  var el = document.getElementById('plan-note');
+  el.style.display = el.style.display === 'block' ? 'none' : 'block';
+}
+
+// 友達紹介
+function goInvite() {
+  if (liff.isInClient()) {
+    liff.openWindow({ url: location.origin + '/liff/invite', external: false });
+  }
+}
+
+// 閉じる
+function closeWindow() {
+  if (liff.isInClient()) {
+    liff.closeWindow();
+  }
+}
+
+function showErr(msg) {
+  document.getElementById('loader').style.display = 'none';
+  document.getElementById('errmsg').innerHTML = msg.replace(/\n/g, '<br>');
+  document.getElementById('errmsg').style.display = 'block';
+}
+</script>
+</body>
+</html>

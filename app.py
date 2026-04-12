@@ -5140,13 +5140,82 @@ def liff_base():
 
 @app.route("/liff/mypage", methods=["GET"])
 def liff_mypage():
-    html = _LIFF_HTML.format(
-        retro_css=_RETRO_CSS,
-        liff_id=LIFF_ID,
-        prefs_json=json.dumps(_PREFECTURES, ensure_ascii=False),
-        cities_json=json.dumps(_CITIES, ensure_ascii=False),
-    )
-    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+    return render_template("liff_mypage.html", liff_id=LIFF_ID)
+
+
+@app.route("/liff/api/mypage", methods=["GET"])
+def liff_api_mypage_get():
+    user_id = request.args.get("line_user_id", "").strip()
+    if not user_id:
+        return jsonify({"error": "line_user_id required"}), 400
+    try:
+        sb = get_supabase()
+        result = sb.table("users").select(
+            "name, prefecture, city, birthdate, gender, is_paid, "
+            "daily_count, bonus_count, last_used_date, referral_code"
+        ).eq("line_user_id", user_id).limit(1).execute()
+        if not result.data:
+            return jsonify({"error": "user not found"}), 404
+        u = result.data[0]
+        today = date.today().isoformat()
+        is_paid = bool(u.get("is_paid"))
+        if is_paid:
+            daily_remaining = 999
+        else:
+            last_used   = u.get("last_used_date")
+            daily_count = u.get("daily_count") or 0
+            if last_used != today:
+                daily_count = 0
+            daily_remaining = max(0, FREE_DAILY_LIMIT - daily_count)
+        bonus_count = u.get("bonus_count") or 0
+        total_remaining = 999 if is_paid else (daily_remaining + bonus_count)
+        return jsonify({
+            "name":            u.get("name") or "",
+            "prefecture":      u.get("prefecture") or "",
+            "city":            u.get("city") or "",
+            "birthday":        u.get("birthdate") or "",
+            "gender":          u.get("gender") or "",
+            "is_paid":         is_paid,
+            "daily_remaining": daily_remaining,
+            "bonus_count":     bonus_count,
+            "total_remaining": total_remaining,
+            "referral_code":   u.get("referral_code") or "",
+        })
+    except Exception as e:
+        logging.exception("liff_api_mypage_get error: %s", e)
+        return jsonify({"error": "server error"}), 500
+
+
+@app.route("/liff/api/mypage", methods=["POST"])
+def liff_api_mypage_post():
+    data = request.get_json(silent=True) or {}
+    user_id = data.get("line_user_id", "").strip()
+    if not user_id:
+        return jsonify({"error": "line_user_id required"}), 400
+    update: dict = {}
+    if "name" in data:
+        update["name"] = (data["name"] or "").strip()
+    if "prefecture" in data or "city" in data:
+        pref = (data.get("prefecture") or "").strip()
+        city = (data.get("city") or "").strip()
+        update["prefecture"] = pref
+        update["city"]       = city
+        update["region"]     = pref + city
+    if "birthday" in data:
+        update["birthdate"] = (data["birthday"] or "").strip()
+    if "gender" in data:
+        g_val = (data["gender"] or "").strip()
+        if g_val in ("male", "female", ""):
+            update["gender"] = g_val if g_val else None
+    if not update:
+        return jsonify({"error": "no fields to update"}), 400
+    try:
+        get_supabase().table("users").update(update).eq("line_user_id", user_id).execute()
+        user_cache.pop(user_id, None)
+        return jsonify({"success": True})
+    except Exception as e:
+        logging.exception("liff_api_mypage_post error: %s", e)
+        return jsonify({"error": "server error"}), 500
 
 
 @app.route("/liff/api/user", methods=["GET"])
