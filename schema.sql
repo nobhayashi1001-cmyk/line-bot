@@ -1,66 +1,11 @@
-CREATE TABLE IF NOT EXISTS users (
-    id             BIGSERIAL PRIMARY KEY,
-    line_user_id   TEXT UNIQUE NOT NULL,
-    name           TEXT,
-    region         TEXT,
-    prefecture     TEXT,
-    city           TEXT,
-    birthdate      TEXT,
-    referral_code  TEXT UNIQUE,
-    referred_by    TEXT,
-    is_paid        BOOLEAN DEFAULT FALSE,
-    daily_count    INTEGER DEFAULT 0,
-    bonus_count    INTEGER DEFAULT 0,
-    last_used_date TEXT,
-    created_at     TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- Supabase の SQL Editor で実行してください
+
+CREATE TABLE messages (
+  id           UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  line_user_id TEXT NOT NULL,
+  role         TEXT NOT NULL,
+  content      TEXT NOT NULL,
+  created_at   TIMESTAMP DEFAULT NOW()
 );
 
--- Migration: add columns to existing table
-ALTER TABLE users ADD COLUMN IF NOT EXISTS prefecture     TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS city           TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS referral_code  TEXT UNIQUE;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by    TEXT;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS is_paid        BOOLEAN DEFAULT FALSE;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_count    INTEGER DEFAULT 0;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS bonus_count    INTEGER DEFAULT 0;
-ALTER TABLE users ADD COLUMN IF NOT EXISTS last_used_date TEXT;
-
-CREATE TABLE IF NOT EXISTS messages (
-    id           BIGSERIAL PRIMARY KEY,
-    line_user_id TEXT NOT NULL,
-    role         TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
-    content      TEXT NOT NULL,
-    created_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS schedules (
-    id           BIGSERIAL PRIMARY KEY,
-    line_user_id TEXT NOT NULL,
-    date         DATE NOT NULL,
-    content      TEXT NOT NULL,
-    created_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS schedules_user_date ON schedules (line_user_id, date);
-
-CREATE TABLE IF NOT EXISTS memos (
-    id           BIGSERIAL PRIMARY KEY,
-    line_user_id TEXT NOT NULL,
-    content      TEXT NOT NULL,
-    created_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS memos_user ON memos (line_user_id);
-
-CREATE TABLE IF NOT EXISTS restaurants (
-    id           BIGSERIAL PRIMARY KEY,
-    place_id     TEXT UNIQUE NOT NULL,
-    name         TEXT NOT NULL,
-    genre        TEXT,
-    area         TEXT,
-    address      TEXT,
-    phone        TEXT,
-    rating       NUMERIC(2,1),
-    price_level  INTEGER,
-    description  TEXT,
-    updated_at   TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+CREATE INDEX idx_messages_user_created ON messages (line_user_id, created_at);

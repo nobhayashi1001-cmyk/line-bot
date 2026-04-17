@@ -4,3 +4,4 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+rich_menu_preview.jpg
